@@ -28,6 +28,9 @@ export class Job {
   })
   priorityLevel: JobPriorityLevel;
 
+  @Column({ nullable: true })
+  workerId: string;
+
   @Column({
     type: 'enum',
     enum: JobStatus,
@@ -46,6 +49,9 @@ export class Job {
 
   @UpdateDateColumn()
   updatedAt: Date;
+
+  @Column({ nullable: true })
+  runAt: Date;
 
   @Column()
   retryCount: number;

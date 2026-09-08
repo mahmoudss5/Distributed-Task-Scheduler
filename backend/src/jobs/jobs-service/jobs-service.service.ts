@@ -7,20 +7,20 @@ import { JobStatus } from '../entites/job-status.enum';
 
 @Injectable()
 export class JobsServiceService {
- constructor(
-    @InjectRepository(Job) private readonly jobRepository: Repository<Job>) {}
+  constructor(
+    @InjectRepository(Job) private readonly jobRepository: Repository<Job>) { }
 
-   private convertToResponse(job: Job): JobCreationResponse {
+  private convertToResponse(job: Job): JobCreationResponse {
     return {
       id: job.id,
       status: job.status,
     };
-   }
+  }
 
   async createJob(job: Partial<Job>): Promise<JobCreationResponse> {
     const newJob = this.jobRepository.create(job);
     const savedJob = await this.jobRepository.save(newJob);
-    let savedJobResponse=this.convertToResponse(savedJob);
+    let savedJobResponse = this.convertToResponse(savedJob);
     return await savedJobResponse;
   }
 
@@ -50,9 +50,22 @@ export class JobsServiceService {
 
   async deleteJob(id: string): Promise<void> {
     await this.jobRepository.delete(id);
- }
- async updateJobStatus(id: string, status: JobStatus): Promise<void> {
+  }
+  async updateJobStatus(id: string, status: JobStatus): Promise<void> {
     await this.jobRepository.update(id, { status });
+  }
+  async updateJobWorker(id: string, workerId: string): Promise<void> {
+    await this.jobRepository.update(id, { workerId });
+  }
+
+  async updateJobRetryDelay(id: string, power: number): Promise<void> {
+    const job = await this.getJobById(id);
+    if (job) {
+      const nextDate = new Date()
+      nextDate.setMinutes(nextDate.getMinutes() + (2 ** power));
+      job.runAt = nextDate;
+      await this.jobRepository.save(job);
+    }
   }
 
 }
