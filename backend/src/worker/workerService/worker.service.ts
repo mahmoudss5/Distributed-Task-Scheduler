@@ -49,6 +49,9 @@ export class WorkerService implements OnApplicationShutdown {
 
   @MessagePattern('job-ready')
   async handleJobReadyMessage(message: any): Promise<void> {
+    if(this.activeJobs>5){
+      return;
+    }
     this.activeJobs++;
     try {
       const { jobId, jobData } = message.value;
