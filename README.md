@@ -10,6 +10,9 @@ A production-ready distributed task scheduling platform built with **NestJS**, *
 - 🔁 **Scheduler** — Cron-based poller that publishes `PENDING` jobs to Kafka every 20 seconds
 - ⚡ **Worker Nodes** — Kafka consumers that pick up and execute jobs, with heartbeat monitoring
 - 📊 **Real-time Dashboard** — Live overview of system stats, worker nodes, queue depth, and recent jobs via WebSocket
+- 🛡️ **Role-Based Audit Logging** — Track critical system events (scheduler pauses, dead workers) using a dedicated audit log and RBAC decorators (`admin` / `user`)
+- 🛑 **Graceful Shutdown & Backpressure** — Workers wait for active jobs to complete on termination. The Scheduler monitors Kafka consumer lag and pauses job pushing when queue depth exceeds safety thresholds
+- 🕒 **Advanced Scheduling & Retries** — Support for delayed execution (`runAt`), auto-calculated priority queues (HIGH/MEDIUM/LOW), and automatic exponential backoff on failure
 - 🎨 **Dark / Light Theme** — Toggle between dark and light mode, persisted to `localStorage`
 - 🐳 **Fully Dockerized** — All services orchestrated with a single `docker-compose up`
 
