@@ -89,6 +89,8 @@ services:
       context: ./backend
       dockerfile: Dockerfile
       target: production
+    deploy:
+      replicas: 4
     container_name: backend_container
     restart: unless-stopped
     env_file:
@@ -119,7 +121,6 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      target: production
     container_name: frontend_container
     restart: unless-stopped
     ports:
