@@ -1,0 +1,31 @@
+import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { Role } from '../enums/role.enum';
+import { ROLES_KEY } from '../decorators/roles.decorator';
+
+@Injectable()
+export class RolesGuard implements CanActivate {
+  constructor(private reflector: Reflector) {}
+
+  canActivate(context: ExecutionContext): boolean {
+    const requiredRoles = this.reflector.getAllAndOverride<Role[]>(ROLES_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
+    if (!requiredRoles) {
+      return true;
+    }
+
+    const request = context.switchToHttp().getRequest();
+    // Temporary mocked auth: Reading role from custom header
+    // TODO: Replace this when actual JWT authentication is added.
+    const userRole = request.headers['x-user-role'];
+
+    if (!userRole) {
+      return false; // No role provided
+    }
+
+    return requiredRoles.includes(userRole as Role);
+  }
+}

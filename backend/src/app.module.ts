@@ -11,6 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { ScheduleModule } from '@nestjs/schedule';
 import { SchedulerModule } from './scheduler/scheduler.module';
+import { AuditLogModule } from './audit-log/audit-log.module';
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
 @Module({
@@ -56,7 +57,8 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     }),
     ScheduleModule.forRoot(),
     SchedulerModule,
-    WorkerModule
+    WorkerModule,
+    AuditLogModule
   ],
   controllers: [AppController],
   providers: [AppService],
