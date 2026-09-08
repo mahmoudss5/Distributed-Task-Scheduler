@@ -2,6 +2,8 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Interval } from '@nestjs/schedule';
 import { v4 as uuidv4 } from 'uuid';
 import { RedisService } from '../redis/redis.service';
+import { AuditLogService } from '../audit-log/audit-log.service';
+import { AuditLogAction } from '../audit-log/enums/audit-log-action.enum';
 
 @Injectable()
 export class LeaderElectionService {
@@ -11,7 +13,10 @@ export class LeaderElectionService {
     private readonly LEADER_KEY = 'scheduler:leader';
     private readonly TTL = 10;
 
-    constructor(private readonly redisService: RedisService) {}
+    constructor(
+        private readonly redisService: RedisService,
+        private readonly auditLogService: AuditLogService,
+    ) {}
 
     @Interval(5000)
     async electLeader(): Promise<void> {
@@ -24,6 +29,13 @@ export class LeaderElectionService {
         if (won) {
             if (!this.isLeader) {
                 this.logger.log(`Instance ${this.instanceId} is now the Leader`);
+                await this.auditLogService.createLog(
+                    AuditLogAction.LEADER_ELECTED,
+                    'Scheduler',
+                    this.instanceId,
+                    undefined,
+                    { message: 'Instance won leader election' }
+                );
             }
             this.isLeader = true;
             return;

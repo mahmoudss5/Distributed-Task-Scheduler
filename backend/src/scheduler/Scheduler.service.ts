@@ -11,6 +11,9 @@ import { Worker } from '../worker/entities/worker.entity';
 import { RedisService } from '../redis/redis.service';
 import { LeaderElectionService } from './LeaderElectionService';
 import { JobPriorityLevel } from '../jobs/entites/job-priority-level.enum';
+import { KafkaLagService } from './kafka-lag.service';
+import { AuditLogService } from '../audit-log/audit-log.service';
+import { AuditLogAction } from '../audit-log/enums/audit-log-action.enum';
 
 @Injectable()
 export class SchedulerService {
@@ -22,6 +25,8 @@ export class SchedulerService {
     private readonly workerRepository: Repository<Worker>,
     @InjectRepository(Job) private readonly jobRepository: Repository<Job>,
     private readonly leaderElectionService: LeaderElectionService,
+    private readonly kafkaLagService: KafkaLagService,
+    private readonly auditLogService: AuditLogService,
   ) {}
 
   @Interval(10000)
@@ -51,6 +56,21 @@ export class SchedulerService {
     if (!this.leaderElectionService.amILeader()) {
       return;
     }
+
+    // Check if there are already too many jobs queued up in Kafka (lag > 10)
+    const lag = await this.kafkaLagService.getConsumerLag('job-ready', 'my-app');
+    if (lag > 10) {
+      console.log(`Kafka lag is ${lag} (> 10). Pausing job scheduling.`);
+      await this.auditLogService.createLog(
+        AuditLogAction.SCHEDULER_PAUSED,
+        'Scheduler',
+        'System',
+        undefined,
+        { lag, reason: 'Kafka consumer lag exceeded threshold of 10' }
+      );
+      return;
+    }
+
     let jobList: Job[] = await this.jobsService.findAllPendingJobs();
     for (const job of jobList) {
       if (job.runAt > new Date()) {
@@ -74,6 +94,13 @@ export class SchedulerService {
         `worker:${worker.id}:heartbeat`,
       );
       if (!isAlive) {
+        await this.auditLogService.createLog(
+          AuditLogAction.WORKER_DEAD_DETECTED,
+          'Worker',
+          worker.id,
+          undefined,
+          { host: worker.host }
+        );
         await this.workerRepository.update(worker.id, { status: 'dead' });
         await this.jobRepository.update(
           { workerId: worker.id, status: JobStatus.PROCESSING },
