@@ -14,12 +14,8 @@ export class Job {
   @Column()
   type: string;
 
-  @Column({
-    type: 'enum',
-    enum: JobPriority,
-    default: JobPriority.LOW,
-  })
-  priority: JobPriority;
+  @Column()
+  priority: number;
 
   @Column({
     type: 'enum',

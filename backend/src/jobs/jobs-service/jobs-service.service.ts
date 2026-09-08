@@ -4,6 +4,7 @@ import { Job } from '../entites/job.entity';
 import { Repository } from 'typeorm';
 import { JobCreationResponse } from '../Dtos/jobCreationResponse';
 import { JobStatus } from '../entites/job-status.enum';
+import { JobPriorityLevel } from '../entites/job-priority-level.enum';
 
 @Injectable()
 export class JobsServiceService {
@@ -68,4 +69,11 @@ export class JobsServiceService {
     }
   }
 
+  async updateJobPriorityLevel(id: string, priorityLevel: JobPriorityLevel): Promise<void> {
+    const job = await this.getJobById(id);
+    if (job) {
+      job.priorityLevel = priorityLevel;
+      await this.jobRepository.save(job);
+    }
+  }
 }

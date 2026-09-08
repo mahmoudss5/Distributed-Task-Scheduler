@@ -1,12 +1,16 @@
 import { Entity, Column, PrimaryGeneratedColumn, CreateDateColumn } from 'typeorm';
+import { AuditLogAction } from '../enums/audit-log-action.enum';
 
 @Entity('audit_logs')
 export class AuditLog {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
-  action: string;
+  @Column({
+    type: 'enum',
+    enum: AuditLogAction,
+  })
+  action: AuditLogAction;
 
   @Column()
   entityName: string;

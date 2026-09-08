@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuditLog } from './entities/audit-log.entity';
+import { AuditLogAction } from './enums/audit-log-action.enum';
 import { AuditLogDto } from './entities/AuditLogDto';
 
 @Injectable()
@@ -12,7 +13,7 @@ export class AuditLogService {
   ) {}
 
   async createLog(
-    action: string,
+    action: AuditLogAction,
     entityName: string,
     entityId: string,
     userId?: string,
