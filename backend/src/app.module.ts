@@ -13,6 +13,8 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { SchedulerModule } from './scheduler/scheduler.module';
 import { AuditLogModule } from './audit-log/audit-log.module';
 import { EmailModule } from './email/email.module';
+import { UsersModule } from './users/users.module';
+import { AuthModule } from './auth/auth.module';
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
 @Module({
@@ -60,7 +62,9 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     SchedulerModule,
     WorkerModule,
     AuditLogModule,
-    EmailModule
+    EmailModule,
+    UsersModule,
+    AuthModule
   ],
   controllers: [AppController],
   providers: [AppService],

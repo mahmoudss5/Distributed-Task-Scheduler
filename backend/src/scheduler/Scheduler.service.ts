@@ -32,7 +32,7 @@ export class SchedulerService {
   @Interval(10000)
   async increaseJobPriority() {
     if (!this.leaderElectionService.amILeader()) return;
-    let jobList: Job[] = await this.jobsService.findAllPendingJobs();
+    let jobList: Job[] = await this.jobsService.fetchPendingJobsForScheduler();
     jobList.forEach((job) => {
       job.priority = job.priority + 2;
       if (
@@ -53,10 +53,10 @@ export class SchedulerService {
 
   @Interval(20000)
   async scheduleJob(): Promise<void> {
+    // check if this workere is the leader
     if (!this.leaderElectionService.amILeader()) {
       return;
     }
-
     // Check if there are already too many jobs queued up in Kafka (lag > 10)
     const lag = await this.kafkaLagService.getConsumerLag('job-ready', 'my-app');
     if (lag > 10) {
@@ -71,15 +71,25 @@ export class SchedulerService {
       return;
     }
 
-    let jobList: Job[] = await this.jobsService.findAllPendingJobs();
+    let jobList: Job[] = await this.jobsService.fetchPendingJobsForScheduler();
     for (const job of jobList) {
       if (job.runAt > new Date()) {
         continue;
       }
-      this.kafkaClient.emit('job-ready', {
-        jobId: job.id,
-        jobData: job.jobPayload,
-      });
+      // check idempotency key
+      const key=`job-idempotency-key:${job.id}`;
+      if(await this.redisService.get(key)){
+        console.log(`Job ${job.id} is already being processed.`);
+        continue;
+      }
+      else{
+        this.kafkaClient.emit('job-ready', {
+          jobId: job.id,
+          jobData: job.jobPayload,
+        });
+        this.redisService.set(key,'true',60);
+      }
+
       await this.jobsService.updateJobStatus(job.id, JobStatus.PROCESSING);
     }
   }

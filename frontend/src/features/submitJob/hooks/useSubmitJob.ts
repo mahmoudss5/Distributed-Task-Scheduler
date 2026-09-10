@@ -35,11 +35,12 @@ export const useSubmitJob = () => {
 
   const mutation = useMutation({
     mutationFn: async (data: JobFormData) => {
-      const res = await axiosInstance.post('/jobs', {
+      const res = await axiosInstance.post('/jobs/create', {
         type: data.type,
-        priority: data.priority.toUpperCase(),
-        schedule: data.schedule,
-        data: JSON.parse(data.payload),
+        priorityLevel: data.priority.toUpperCase(),
+        // We will pass schedule as cron if it's not 'now'
+        ...(data.schedule !== 'now' ? { cron: data.schedule } : {}),
+        jobPayload: JSON.parse(data.payload),
       });
       return res.data;
     },

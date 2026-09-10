@@ -5,11 +5,14 @@ import { Repository } from 'typeorm';
 import { JobCreationResponse } from '../Dtos/jobCreationResponse';
 import { JobStatus } from '../entites/job-status.enum';
 import { JobPriorityLevel } from '../entites/job-priority-level.enum';
+import { EventsGateway } from '../../events/events.gateway';
+import { PaginatedResponse } from '../../common/dto/pagination.dto';
 
 @Injectable()
 export class JobsServiceService {
   constructor(
     @InjectRepository(Job) private readonly jobRepository: Repository<Job>,
+    private readonly eventsGateway: EventsGateway,
   ) {}
 
   private convertToResponse(job: Job): JobCreationResponse {
@@ -31,62 +34,123 @@ export class JobsServiceService {
     }
   }
 
-  async createJob(job: Partial<Job>): Promise<JobCreationResponse> {
+  private async paginateJobs(
+    where: any,
+    page: number,
+    limit: number,
+    order?: any,
+  ): Promise<PaginatedResponse<Job>> {
+    const skip = (page - 1) * limit;
+    const [data, total] = await this.jobRepository.findAndCount({
+      where,
+      take: limit,
+      skip,
+      order,
+    });
+
+    return {
+      data,
+      meta: {
+        total,
+        page,
+        limit,
+      },
+    };
+  }
+
+  async createJob(
+    job: Partial<Job>,
+    userId: string,
+  ): Promise<JobCreationResponse> {
     // Automatically calculate and set the numerical priority based on the priority level
     const priorityLevel = job.priorityLevel || JobPriorityLevel.LOW;
     job.priority = this.getPriorityNumber(priorityLevel);
 
-    const newJob = this.jobRepository.create(job);
+    const newJob = this.jobRepository.create({ ...job, userId });
     const savedJob = await this.jobRepository.save(newJob);
     let savedJobResponse = this.convertToResponse(savedJob);
-    return await savedJobResponse;
+
+    this.eventsGateway.broadcastJobStatusChanged();
+    this.eventsGateway.broadcastStatsUpdate();
+
+    return savedJobResponse;
   }
 
-  async getJobById(id: string): Promise<Job | null> {
-    return await this.jobRepository.findOne({ where: { id } });
+  async getJobById(id: string, userId?: string): Promise<Job | null> {
+    const where: any = { id };
+    if (userId) where.userId = userId;
+    return await this.jobRepository.findOne({ where });
   }
 
-  async getFailedJobs(): Promise<Job[]> {
-    return await this.jobRepository.find({
-      where: { status: JobStatus.FAILED },
+  async getFailedJobs(page: number, limit: number, userId?: string): Promise<PaginatedResponse<Job>> {
+    const where: any = { status: JobStatus.FAILED };
+    if (userId) where.userId = userId;
+    return await this.paginateJobs(where, page, limit);
+  }
+
+  async getCountOfFailedJobs(userId?: string): Promise<number> {
+    const where: any = { status: JobStatus.FAILED };
+    if (userId) where.userId = userId;
+    return await this.jobRepository.count({ where });
+  }
+
+  async findAllPendingJobs(page: number, limit: number, userId?: string): Promise<PaginatedResponse<Job>> {
+    const where: any = { status: JobStatus.PENDING };
+    if (userId) where.userId = userId;
+    return await this.paginateJobs(where, page, limit, {
+      priority: 'DESC',
+      createdAt: 'ASC',
     });
   }
-  async getCountOfFailedJobs(): Promise<number> {
-    return await this.jobRepository.count({
-      where: { status: JobStatus.FAILED },
-    });
-  }
 
-  async findAllPendingJobs(): Promise<Job[]> {
+  async fetchPendingJobsForScheduler(limit: number = 100): Promise<Job[]> {
     return await this.jobRepository.find({
       where: { status: JobStatus.PENDING },
+      take: limit,
       order: {
-        priority: 'DESC', // Highest priority first (15 -> 10 -> 5)
-        createdAt: 'ASC', // Then oldest first (FIFO)
+        priority: 'DESC',
+        createdAt: 'ASC',
       },
     });
   }
-  async getCountOfPendingJobs(): Promise<number> {
-    return await this.jobRepository.count({
-      where: { status: JobStatus.PENDING },
-    });
+
+  async getCountOfPendingJobs(userId?: string): Promise<number> {
+    const where: any = { status: JobStatus.PENDING };
+    if (userId) where.userId = userId;
+    return await this.jobRepository.count({ where });
   }
-  async findAllCompletedJobs(): Promise<Job[]> {
-    return await this.jobRepository.find({
-      where: { status: JobStatus.COMPLETED },
-    });
+
+  async findAllCompletedJobs(page: number, limit: number, userId?: string): Promise<PaginatedResponse<Job>> {
+    const where: any = { status: JobStatus.COMPLETED };
+    if (userId) where.userId = userId;
+    return await this.paginateJobs(where, page, limit);
   }
-  async getCountOfCompletedJobs(): Promise<number> {
-    return await this.jobRepository.count({
-      where: { status: JobStatus.COMPLETED },
+
+  async getCountOfCompletedJobs(userId?: string): Promise<number> {
+    const where: any = { status: JobStatus.COMPLETED };
+    if (userId) where.userId = userId;
+    return await this.jobRepository.count({ where });
+  }
+
+  async findAllJobs(page: number, limit: number, userId?: string): Promise<PaginatedResponse<Job>> {
+    const where: any = {};
+    if (userId) where.userId = userId;
+    return await this.paginateJobs(where, page, limit, {
+      createdAt: 'DESC',
     });
   }
 
-  async deleteJob(id: string): Promise<void> {
-    await this.jobRepository.delete(id);
+  async deleteJob(id: string, userId?: string): Promise<void> {
+    const where: any = { id };
+    if (userId) where.userId = userId;
+    await this.jobRepository.delete(where);
+    this.eventsGateway.broadcastJobStatusChanged();
+    this.eventsGateway.broadcastStatsUpdate();
   }
   async updateJobStatus(id: string, status: JobStatus): Promise<void> {
     await this.jobRepository.update(id, { status });
+    this.eventsGateway.broadcastJobStatusChanged();
+    this.eventsGateway.broadcastStatsUpdate();
   }
   async updateJobWorker(id: string, workerId: string): Promise<void> {
     await this.jobRepository.update(id, { workerId });

@@ -6,15 +6,17 @@ A production-ready distributed task scheduling platform built with **NestJS**, *
 
 ## ✨ Features
 
-- 📋 **Job Submission** — Submit background jobs via REST API or the web UI with JSON payloads
-- 🔁 **Scheduler** — Cron-based poller that publishes `PENDING` jobs to Kafka every 20 seconds
-- ⚡ **Worker Nodes** — Kafka consumers that pick up and execute jobs, with heartbeat monitoring
-- 📊 **Real-time Dashboard** — Live overview of system stats, worker nodes, queue depth, and recent jobs via WebSocket
-- 🛡️ **Role-Based Audit Logging** — Track critical system events (scheduler pauses, dead workers) using a dedicated audit log and RBAC decorators (`admin` / `user`)
-- 🛑 **Graceful Shutdown & Backpressure** — Workers wait for active jobs to complete on termination. The Scheduler monitors Kafka consumer lag and pauses job pushing when queue depth exceeds safety thresholds
-- 🕒 **Advanced Scheduling & Retries** — Support for delayed execution (`runAt`), auto-calculated priority queues (HIGH/MEDIUM/LOW), and automatic exponential backoff on failure
-- 🎨 **Dark / Light Theme** — Toggle between dark and light mode, persisted to `localStorage`
-- 🐳 **Fully Dockerized** — All services orchestrated with a single `docker-compose up`
+- 🔐 **Authentication & Security** — JWT-based authentication, robust role-based access control (Admin/User), and fully protected API endpoints via Guards. Multi-tenancy support ensures users can only interact with their own jobs.
+- 🔑 **Password Recovery** — Secure OTP-based password reset flow utilizing Nodemailer and Redis for short-lived token storage.
+- 📋 **Job Submission & Validation** — Submit background jobs via REST API or the web UI. All incoming payloads are strictly validated using `class-validator` and `class-transformer`.
+- 🔁 **Scheduler** — Cron-based poller that publishes `PENDING` jobs to Kafka every 20 seconds.
+- ⚡ **Worker Nodes** — Kafka consumers that pick up and execute jobs, featuring heartbeat monitoring and simulated heavy task execution.
+- 📊 **Real-time Dashboard** — Live overview of system stats, worker nodes, queue depth, and recent jobs.
+- 🛡️ **Role-Based Audit Logging** — Track critical system events (scheduler pauses, dead workers) using a dedicated audit log.
+- 🛑 **Graceful Shutdown & Backpressure** — Workers wait for active jobs to complete on termination. Workers also feature built-in Kafka backpressure, gracefully pausing consumption when overloaded instead of dropping messages.
+- 🕒 **Advanced Scheduling & Retries** — Support for delayed execution (`runAt`), **cron-based recurring jobs** (`cron-parser`), auto-calculated priority queues (HIGH/MEDIUM/LOW), and automatic exponential backoff on failure.
+- 🎨 **Dark / Light Theme** — Toggle between dark and light mode, persisted to `localStorage`.
+- 🐳 **Fully Dockerized** — All services orchestrated with a single `docker-compose up`.
 
 ---
 
@@ -51,8 +53,11 @@ A production-ready distributed task scheduling platform built with **NestJS**, *
 .
 ├── backend/                   # NestJS API & Workers
 │   ├── src/
-│   │   ├── jobs/              # Job entity, service, controller
-│   │   ├── worker/            # Worker entity, service, consumer
+│   │   ├── auth/              # JWT Auth, Guards, and Decorators
+│   │   ├── users/             # User entity, password hashing, user management
+│   │   ├── email/             # Nodemailer and OTP logic
+│   │   ├── jobs/              # Job entity, DTOs, service, controller
+│   │   ├── worker/            # Worker entity, service, consumer (backpressure enabled)
 │   │   ├── scheduler/         # Cron scheduler service
 │   │   ├── kafka/             # Kafka module
 │   │   ├── redis/             # Redis module
@@ -62,9 +67,10 @@ A production-ready distributed task scheduling platform built with **NestJS**, *
 │
 ├── frontend/                  # React + Vite + TypeScript
 │   ├── src/
-│   │   ├── context/           # ThemeContext (dark/light)
-│   │   ├── shared/            # Axios, WebSocket hook, types, shared components
+│   │   ├── context/           # ThemeContext, AuthContext
+│   │   ├── shared/            # Axios Interceptors, Protected Routes
 │   │   └── features/
+│   │       ├── auth/          # Login, Register, Forgot Password
 │   │       ├── overview/      # System overview dashboard
 │   │       └── submitJob/     # Job submission form
 │   ├── Dockerfile
@@ -105,6 +111,7 @@ cp backend/.env.example backend/.env
 | `MYSQL_PASSWORD`      | Database password              | —                    |
 | `DB_HOST`             | DB host (set to `localhost` for dev) | `localhost`    |
 | `DB_PORT`             | DB port                        | `3307`               |
+| `JWT_SECRET`          | Secret key for signing JWTs    | `super-secret`       |
 
 ### 3. Run with Docker (Recommended)
 
@@ -149,25 +156,30 @@ Frontend available at **http://localhost:5173**
 
 ## 📡 API Endpoints
 
-| Method | Endpoint       | Description                  |
-|--------|----------------|------------------------------|
-| `POST` | `/jobs`        | Submit a new job             |
-| `GET`  | `/jobs/recent` | Get the most recent jobs     |
-| `GET`  | `/workers`     | List all worker nodes        |
-| `GET`  | `/stats`       | Get system-wide stats        |
+All endpoints (except Authentication endpoints) require a `Bearer <token>` in the `Authorization` header.
+
+| Method | Endpoint                    | Description                                  |
+|--------|-----------------------------|----------------------------------------------|
+| `POST` | `/auth/login`               | Authenticate and receive JWT                 |
+| `POST` | `/auth/register`            | Register a new user account                  |
+| `POST` | `/users/forgot-password`    | Send an OTP to user's email                  |
+| `POST` | `/users/reset-password`     | Verify OTP and set a new password            |
+| `POST` | `/jobs-controller/create`   | Submit a new job (supports `cron` field)     |
+| `GET`  | `/jobs-controller/all`      | Get all pending jobs for the current user    |
+| `GET`  | `/jobs-controller/completedCount` | Get completed jobs count for the user |
 
 ### Example: Submit a Job
 
 ```bash
-curl -X POST http://localhost:3000/jobs \
+curl -X POST http://localhost:3000/jobs-controller/create \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -d '{
-    "type": "Email",
-    "priority": "HIGH",
-    "schedule": "now",
-    "data": {
-      "to": "user@example.com",
-      "subject": "Hello World"
+    "type": "Data Processing",
+    "priorityLevel": "HIGH",
+    "cron": "*/5 * * * *",
+    "jobPayload": {
+      "datasetId": "12345"
     }
   }'
 ```
@@ -177,7 +189,7 @@ curl -X POST http://localhost:3000/jobs \
 ## 🔄 Job Lifecycle
 
 ```
-Submit via API
+Submit via API (Validated & Tied to User ID)
       │
       ▼
 Job saved to MySQL (status: PENDING)
@@ -190,10 +202,13 @@ Publishes to Kafka topic: job-ready
 (status updated to: PROCESSING)
       │
       ▼
-WorkerService consumes the message
+WorkerService consumes the message (with Backpressure)
       │
       ├─ Success → status: COMPLETED
+      │          └─ If 'cron' is set → spawn NEW job (status: PENDING)
+      │
       └─ Failure → status: FAILED (retryCount++)
+                 └─ If retryable, runAt = exponential backoff delay
 ```
 
 ---
@@ -203,12 +218,12 @@ WorkerService consumes the message
 | Layer       | Technology                                  |
 |-------------|---------------------------------------------|
 | **Frontend** | React 19, Vite, TypeScript, Tailwind CSS v3 |
-| **State**    | TanStack Query v5 + React Router v6         |
-| **Backend**  | NestJS 12, TypeScript                        |
+| **State**    | Context API, React Router v6                |
+| **Backend**  | NestJS 12, TypeScript, class-validator      |
+| **Auth**     | JWT, Passport, bcrypt                       |
 | **Database** | MySQL 8.0 via TypeORM                        |
 | **Broker**   | Apache Kafka (via KafkaJS)                   |
 | **Cache**    | Redis 6.2                                    |
-| **Realtime** | WebSockets (NestJS Gateway)                  |
 | **Icons**    | lucide-react                                 |
 | **Infra**    | Docker, Docker Compose, Nginx                |
 

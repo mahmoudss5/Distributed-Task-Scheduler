@@ -38,13 +38,16 @@ export class Job {
   executeAt: Date;
 
   @Column()
-  WorkerId: number;
+  userId: string;
 
   @CreateDateColumn()
   createdAt: Date;
 
   @UpdateDateColumn()
   updatedAt: Date;
+
+  @Column({ nullable: true })
+  cron?: string;
 
   @Column({ nullable: true })
   runAt: Date;

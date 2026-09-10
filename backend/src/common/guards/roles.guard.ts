@@ -18,9 +18,7 @@ export class RolesGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest();
-    // Temporary mocked auth: Reading role from custom header
-    // TODO: Replace this when actual JWT authentication is added.
-    const userRole = request.headers['x-user-role'];
+    const userRole = request.user?.role;
 
     if (!userRole) {
       return false; // No role provided

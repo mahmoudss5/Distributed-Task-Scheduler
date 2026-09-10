@@ -1,23 +1,33 @@
 import React from 'react';
 import { Routes, Route } from 'react-router-dom';
-import Sidebar from './shared/components/Sidebar/Sidebar';
+import ProtectedRoute from './shared/components/ProtectedRoute';
 import OverviewPage from './features/overview/index';
 import SubmitJobPage from './features/submitJob/index';
+import LoginPage from './features/auth/LoginPage';
+import RegisterPage from './features/auth/RegisterPage';
+import ForgotPasswordPage from './features/auth/ForgotPasswordPage';
+import ResetPasswordPage from './features/auth/ResetPasswordPage';
 import { useWebSocket } from './shared/websocket/useWebSocket';
 
+
 const App: React.FC = () => {
-  useWebSocket(); // Connect WS at app level, invalidates queries on events
+  // Ensure websocket only tries to connect when authenticated (you might need to update useWebSocket internally to respect this)
+  useWebSocket(); 
 
   return (
-    <div className="flex h-screen bg-slate-900 dark:bg-slate-950 text-slate-100 overflow-hidden">
-      <Sidebar />
-      <main className="flex-1 flex flex-col overflow-hidden">
-        <Routes>
-          <Route path="/" element={<OverviewPage />} />
-          <Route path="/submit" element={<SubmitJobPage />} />
-        </Routes>
-      </main>
-    </div>
+    <Routes>
+      {/* Public Routes */}
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
+
+      {/* Protected Routes (Sidebar & Layout included here) */}
+      <Route element={<ProtectedRoute />}>
+        <Route path="/" element={<OverviewPage />} />
+        <Route path="/submit" element={<SubmitJobPage />} />
+      </Route>
+    </Routes>
   );
 };
 

@@ -54,8 +54,8 @@ export const useOverview = () => {
     queryKey: ['jobs'],
     queryFn: async () => {
       try {
-        const res = await axiosInstance.get<Job[]>('/jobs/recent');
-        return res.data;
+        const res = await axiosInstance.get<{ data: Job[], meta: any }>('/jobs/my?page=1&limit=10');
+        return res.data.data;
       } catch {
         return mockJobs;
       }
