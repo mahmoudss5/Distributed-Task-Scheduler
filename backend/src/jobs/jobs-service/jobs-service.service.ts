@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Job } from '../entites/job.entity';
 import { Repository } from 'typeorm';
@@ -7,12 +7,19 @@ import { JobStatus } from '../entites/job-status.enum';
 import { JobPriorityLevel } from '../entites/job-priority-level.enum';
 import { EventsGateway } from '../../events/events.gateway';
 import { PaginatedResponse } from '../../common/dto/pagination.dto';
+import { ReportService } from '../../report/service/report.service';
+import { EmailService } from '../../email/service/email.service';
+import { JobType } from '../entites/job.type.enum';
 
 @Injectable()
 export class JobsServiceService {
   constructor(
     @InjectRepository(Job) private readonly jobRepository: Repository<Job>,
     private readonly eventsGateway: EventsGateway,
+    @Inject(forwardRef(() => ReportService))
+    private readonly reportService: ReportService,
+    @Inject(forwardRef(() => EmailService))
+    private readonly emailService: EmailService,
   ) {}
 
   private convertToResponse(job: Job): JobCreationResponse {
@@ -82,7 +89,11 @@ export class JobsServiceService {
     return await this.jobRepository.findOne({ where });
   }
 
-  async getFailedJobs(page: number, limit: number, userId?: string): Promise<PaginatedResponse<Job>> {
+  async getFailedJobs(
+    page: number,
+    limit: number,
+    userId?: string,
+  ): Promise<PaginatedResponse<Job>> {
     const where: any = { status: JobStatus.FAILED };
     if (userId) where.userId = userId;
     return await this.paginateJobs(where, page, limit);
@@ -94,7 +105,11 @@ export class JobsServiceService {
     return await this.jobRepository.count({ where });
   }
 
-  async findAllPendingJobs(page: number, limit: number, userId?: string): Promise<PaginatedResponse<Job>> {
+  async findAllPendingJobs(
+    page: number,
+    limit: number,
+    userId?: string,
+  ): Promise<PaginatedResponse<Job>> {
     const where: any = { status: JobStatus.PENDING };
     if (userId) where.userId = userId;
     return await this.paginateJobs(where, page, limit, {
@@ -120,7 +135,11 @@ export class JobsServiceService {
     return await this.jobRepository.count({ where });
   }
 
-  async findAllCompletedJobs(page: number, limit: number, userId?: string): Promise<PaginatedResponse<Job>> {
+  async findAllCompletedJobs(
+    page: number,
+    limit: number,
+    userId?: string,
+  ): Promise<PaginatedResponse<Job>> {
     const where: any = { status: JobStatus.COMPLETED };
     if (userId) where.userId = userId;
     return await this.paginateJobs(where, page, limit);
@@ -132,7 +151,11 @@ export class JobsServiceService {
     return await this.jobRepository.count({ where });
   }
 
-  async findAllJobs(page: number, limit: number, userId?: string): Promise<PaginatedResponse<Job>> {
+  async findAllJobs(
+    page: number,
+    limit: number,
+    userId?: string,
+  ): Promise<PaginatedResponse<Job>> {
     const where: any = {};
     if (userId) where.userId = userId;
     return await this.paginateJobs(where, page, limit, {
@@ -174,6 +197,50 @@ export class JobsServiceService {
     if (job) {
       job.priorityLevel = priorityLevel;
       await this.jobRepository.save(job);
+    }
+  }
+
+  async claimJob(jobId:string): Promise<boolean> {
+
+    const result = await this.jobRepository
+      .createQueryBuilder()
+      .update(Job)
+      .set({
+        status: JobStatus.PROCESSING,
+      })
+      .where('id = :id', { id: jobId })
+      .andWhere('status = :status', {
+        status: JobStatus.PENDING,
+      })
+      .execute();
+
+    return result.affected === 1;
+  }
+
+  JobCorn(currentJob: Job, nextRun: Date): Job {
+    const newJob = this.jobRepository.create({
+      type: currentJob.type,
+      userId: currentJob.userId,
+      jobPayload: currentJob.jobPayload,
+      priority: currentJob.priority,
+      priorityLevel: currentJob.priorityLevel,
+      cron: currentJob.cron,
+      retryCount: 3, // Assuming 3 is the default max retries
+      runAt: nextRun,
+      status: JobStatus.PENDING,
+    });
+
+    return newJob;
+  }
+
+  async executeJob(currentJob: Job): Promise<void> {
+    const type = currentJob.type;
+    if (type === JobType.sendEmail) {
+      await this.emailService.sendEmail(currentJob.jobPayload.to, currentJob.jobPayload.subject, currentJob.jobPayload.body);
+    }
+    if (type === JobType.generateReport) {
+      const userId = typeof currentJob.jobPayload === 'string' ? currentJob.jobPayload : currentJob.jobPayload.userId;
+      await this.reportService.generatePdfReport(userId);
     }
   }
 }

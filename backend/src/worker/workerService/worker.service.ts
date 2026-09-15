@@ -31,91 +31,112 @@ export class WorkerService implements OnApplicationShutdown {
   ) {
     kafkaClient.subscribeToResponseOf('job-ready');
     kafkaClient.connect();
+    this.registerWorker();
+  }
+
+  private async registerWorker(): Promise<void> {
     const worker = new Worker();
     worker.id = this.workerId;
     worker.host = os.hostname();
     worker.status = 'active';
     worker.lastHeartbeat = new Date();
-    this.workerRepository
-      .save(worker)
-      .catch((err) => console.error('Failed to save worker:', err));
+    try {
+      await this.workerRepository.save(worker);
+    } catch (err) {
+      console.error('Failed to save worker:', err);
+    }
   }
 
   @Interval(20000)
   async heartbeat(): Promise<void> {
-    await this.redisService.set(
-      `worker:${this.workerId}:heartbeat`,
-      'alive',
-      60,
-    );
+    if (this.isShuttingDown) return;
+    await this.redisService.set(`worker:${this.workerId}:heartbeat`, 'alive', 60);
     this.eventsGateway.broadcastWorkerHeartbeat();
   }
 
   @MessagePattern('job-ready')
   async handleJobReadyMessage(message: any): Promise<void> {
-    // Backpressure: pause processing if we're overwhelmed
-    while (this.activeJobs >= 5) {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+    await this.applyBackpressure();
+
+    const { jobId } = message.value;
+    if (!(await this.jobService.claimJob(jobId))) {
+      this.logger.warn(`Job ${jobId} is already claimed by another worker.`);
+      return;
     }
 
     this.activeJobs++;
     try {
-      const { jobId, jobData } = message.value;
-      console.log(`Received job-ready message for jobId: ${jobId}`);
-
-      const currentJob = await this.jobRepository.findOne({
-        where: { id: jobId },
-      });
+      const currentJob = await this.claimAndLockJob(jobId);
       if (!currentJob) return;
 
-      currentJob.workerId = this.workerId;
-      await this.jobRepository.save(currentJob);
-      
-      try {
-        // Implement the actual logic to process the job
-        this.logger.log(`Executing job ${currentJob.id} of type ${currentJob.type}`);
-        
-        // Mocking a heavy task (e.g., HTTP request, script execution, etc.)
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        
-        this.logger.log(`Successfully completed job ${currentJob.id}`);
-
-        // Mark the job as completed
-        await this.jobRepository.update(currentJob.id, {
-          status: JobStatus.COMPLETED,
-        });
-
-        // Reschedule if it's a cron job
-        if (currentJob.cron) {
-          const interval = CronExpressionParser.parse(currentJob.cron);
-          const nextRun = interval.next().toDate();
-
-          const newJob = this.jobRepository.create({
-            type: currentJob.type,
-            userId: currentJob.userId,
-            jobPayload: currentJob.jobPayload,
-            priority: currentJob.priority,
-            priorityLevel: currentJob.priorityLevel,
-            cron: currentJob.cron,
-            retryCount: 3, // Assuming 3 is the default max retries
-            runAt: nextRun,
-            status: JobStatus.PENDING,
-          });
-          await this.jobRepository.save(newJob);
-          console.log(`Job ${currentJob.id} rescheduled via cron for ${nextRun}`);
-        }
-      } catch (error) {
-        if (currentJob.retryCount === 0) {
-          await this.jobRepository.update(currentJob.id, {
-            status: JobStatus.FAILED,
-          });
-        } else {
-          const powerForNextTry = 3 - currentJob.retryCount;
-          await this.jobService.updateJobRetryDelay(jobId, powerForNextTry);
-        }
-      }
+      await this.processJob(currentJob);
     } finally {
       this.activeJobs--;
+    }
+  }
+
+  private async applyBackpressure(): Promise<void> {
+    while (this.activeJobs >= 5) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }
+
+  private async claimAndLockJob(jobId: string): Promise<Job | null> {
+    const currentJob = await this.jobRepository.findOne({ where: { id: jobId } });
+    if (!currentJob) return null;
+
+    currentJob.workerId = this.workerId;
+    return await this.jobRepository.save(currentJob);
+  }
+
+  private async processJob(currentJob: Job): Promise<void> {
+    try {
+      this.logger.log(`Executing job ${currentJob.id} of type ${currentJob.type}`);
+      await this.jobService.executeJob(currentJob);
+      this.logger.log(`Successfully completed job ${currentJob.id}`);
+
+      await this.handleJobCompletion(currentJob);
+    } catch (error) {
+      this.logger.error(`Failed to execute job ${currentJob.id}`, error);
+      await this.handleJobFailure(currentJob);
+    }
+  }
+
+  private async handleJobCompletion(currentJob: Job): Promise<void> {
+    await this.jobRepository.update(currentJob.id, {
+      status: JobStatus.COMPLETED,
+    });
+
+    if (currentJob.cron) {
+      await this.rescheduleCronJob(currentJob);
+    }
+  }
+
+  private async rescheduleCronJob(currentJob: Job): Promise<void> {
+    const interval = CronExpressionParser.parse(currentJob.cron!);
+    const nextRun = interval.next().toDate();
+    const newJob = this.jobService.JobCorn(currentJob, nextRun);
+    await this.jobRepository.save(newJob);
+    this.logger.log(`Job ${currentJob.id} rescheduled via cron for ${nextRun}`);
+  }
+
+  private async handleJobFailure(currentJob: Job): Promise<void> {
+    if (currentJob.retryCount <= 0) {
+      await this.jobRepository.update(currentJob.id, {
+        status: JobStatus.FAILED,
+      });
+      this.logger.warn(`Job ${currentJob.id} permanently failed.`);
+    } else {
+      const powerForNextTry = 3 - currentJob.retryCount;
+      await this.jobService.updateJobRetryDelay(currentJob.id, powerForNextTry);
+      
+      // Decrease retry count and reset status to pending for the scheduler to pick it up again
+      currentJob.retryCount -= 1;
+      currentJob.status = JobStatus.PENDING;
+      currentJob.workerId = null as any; 
+      await this.jobRepository.save(currentJob);
+      
+      this.logger.log(`Job ${currentJob.id} will be retried (remaining attempts: ${currentJob.retryCount})`);
     }
   }
 
@@ -123,14 +144,11 @@ export class WorkerService implements OnApplicationShutdown {
     this.logger.log(`Received ${signal}. Starting graceful shutdown...`);
     this.isShuttingDown = true;
     
-    // Stop accepting new jobs by closing the Kafka client
     await this.kafkaClient.close();
     
-    // Mark worker as offline
     await this.workerRepository.update(this.workerId, { status: JobStatus.DEAD });
     await this.redisService.del(`worker:${this.workerId}:heartbeat`);
 
-    // Wait for active jobs to finish
     if (this.activeJobs > 0) {
       this.logger.log(`Waiting for ${this.activeJobs} active jobs to finish...`);
       while (this.activeJobs > 0) {

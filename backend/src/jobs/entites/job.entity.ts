@@ -1,4 +1,5 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { JobType } from './job.type.enum';
 import { JobStatus } from './job-status.enum';
 import { JobPriority } from './job-priority.enum';
 import { JobPriorityLevel } from './job-priority-level.enum';
@@ -11,8 +12,13 @@ export class Job {
   @Column('jsonb')
   jobPayload: any;
 
-  @Column()
-  type: string;
+  @Column(
+    {
+      type: 'enum',
+      enum: JobType,
+    }
+  )
+  type: JobType;
 
   @Column()
   priority: number;

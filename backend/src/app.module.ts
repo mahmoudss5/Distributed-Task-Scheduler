@@ -15,6 +15,7 @@ import { AuditLogModule } from './audit-log/audit-log.module';
 import { EmailModule } from './email/email.module';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
+import { ReportModule } from './report/report.module';
 export const { ObserveModule, ObserveInstrument } = createObserveModule();
 
 @Module({
@@ -64,7 +65,8 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     AuditLogModule,
     EmailModule,
     UsersModule,
-    AuthModule
+    AuthModule,
+    ReportModule
   ],
   controllers: [AppController],
   providers: [AppService],
