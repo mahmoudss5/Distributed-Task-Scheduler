@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { createObserveModule } from '@nestjs/observe';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { JobsModule } from './jobs/jobs.module';
@@ -16,15 +15,11 @@ import { EmailModule } from './email/email.module';
 import { UsersModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
 import { ReportModule } from './report/report.module';
-export const { ObserveModule, ObserveInstrument } = createObserveModule();
-
+import { HealthModule } from './health/health.module';
+import { RateLimitGuard } from './common/guards/rate-limit.guard';
+import { SystemModule } from './system/system.module';
 @Module({
   imports: [
-    ObserveModule.forRoot({
-      appKey: 'YOUR_APP_KEY',
-      appSecret: 'YOUR_APP_SECRET',
-      serviceId: 'backend',
-    }),
     JobsModule,
     WorkerModule,
     RedisModule,
@@ -39,7 +34,15 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
         password: config.get('DB_PASSWORD'),
         database: config.get('DB_NAME'),
         autoLoadEntities: true,
-        synchronize: true, // Set to false in production!
+        migrations: [__dirname + '/migrations/*{.js,.ts}'],
+        synchronize: config.get(
+          'DB_SYNCHRONIZE',
+          config.get('NODE_ENV', 'development') === 'production' ? 'false' : 'true',
+        ) === 'true',
+        migrationsRun: config.get(
+          'DB_MIGRATIONS_RUN',
+          config.get('NODE_ENV', 'development') === 'production' ? 'true' : 'false',
+        ) === 'true',
       }),
     }),
     ClientsModule.register({
@@ -50,7 +53,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
           options: {
             client: {
               clientId: 'my-app',
-              brokers: ['localhost:9092'],
+            brokers: [process.env.KAFKA_BROKER ?? 'localhost:9092'],
             },
             producer: {
               allowAutoTopicCreation: true,
@@ -61,14 +64,15 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     }),
     ScheduleModule.forRoot(),
     SchedulerModule,
-    WorkerModule,
     AuditLogModule,
     EmailModule,
     UsersModule,
     AuthModule,
-    ReportModule
+    ReportModule,
+    HealthModule,
+    SystemModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, RateLimitGuard],
 })
 export class AppModule { }
