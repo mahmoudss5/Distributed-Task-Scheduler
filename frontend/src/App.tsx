@@ -1,5 +1,6 @@
 import React from 'react';
 import { Routes, Route } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
 import ProtectedRoute from './shared/components/ProtectedRoute';
 import OverviewPage from './features/overview/index';
 import SubmitJobPage from './features/submitJob/index';
@@ -15,7 +16,9 @@ const App: React.FC = () => {
   useWebSocket(); 
 
   return (
-    <Routes>
+    <>
+      <Toaster position="top-right" />
+      <Routes>
       {/* Public Routes */}
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
@@ -28,6 +31,7 @@ const App: React.FC = () => {
         <Route path="/submit" element={<SubmitJobPage />} />
       </Route>
     </Routes>
+    </>
   );
 };
 

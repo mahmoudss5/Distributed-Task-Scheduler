@@ -6,16 +6,15 @@ import type { JobFormData } from '../../../shared/types';
 const DEFAULT_PAYLOAD = JSON.stringify({
   to: 'engineer@example.com',
   subject: 'Your report is ready',
-  template: 'report-ready',
-  data: { reportId: 'rpt_2026_0042' },
+  body: '<p>Your report is ready.</p>',
 }, null, 2);
 
 export const useSubmitJob = () => {
   const queryClient = useQueryClient();
 
   const [form, setForm] = useState<JobFormData>({
-    type: 'Email',
-    priority: 'Normal',
+    type: 'sendEmail',
+    priority: 'LOW',
     schedule: 'now',
     payload: DEFAULT_PAYLOAD,
   });
@@ -35,11 +34,15 @@ export const useSubmitJob = () => {
 
   const mutation = useMutation({
     mutationFn: async (data: JobFormData) => {
+      const schedule = data.schedule === 'later'
+        ? { executeAt: new Date(Date.now() + 5 * 60 * 1000).toISOString() }
+        : data.schedule === 'recurring'
+          ? { cron: '*/5 * * * *' }
+          : {};
       const res = await axiosInstance.post('/jobs/create', {
         type: data.type,
-        priorityLevel: data.priority.toUpperCase(),
-        // We will pass schedule as cron if it's not 'now'
-        ...(data.schedule !== 'now' ? { cron: data.schedule } : {}),
+        priorityLevel: data.priority,
+        ...schedule,
         jobPayload: JSON.parse(data.payload),
       });
       return res.data;

@@ -63,7 +63,9 @@ const SubmitJobPage: React.FC = () => {
             {mutation.isError && (
               <div className="flex items-center gap-1.5 text-xs text-red-400">
                 <AlertCircle size={13} />
-                Submission failed. Check your payload and try again.
+                {mutation.error instanceof Error
+                  ? mutation.error.message
+                  : 'Submission failed. Check your payload and try again.'}
               </div>
             )}
             {!mutation.isSuccess && !mutation.isError && (

@@ -1,8 +1,11 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { WebSocketMessage } from '../types';
+import toast from 'react-hot-toast';
 
-const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:3000';
+const WS_URL = import.meta.env.VITE_WS_URL || (import.meta.env.DEV
+  ? 'ws://localhost:3000'
+  : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`);
 
 export const useWebSocket = () => {
   const queryClient = useQueryClient();
@@ -28,6 +31,14 @@ export const useWebSocket = () => {
               break;
             case 'worker-heartbeat':
               queryClient.invalidateQueries({ queryKey: ['workers'] });
+              break;
+            case 'job-failed':
+              if (msg.payload) {
+                const { jobId, error, type } = msg.payload;
+                toast.error(`Job ${jobId} (${type}) failed permanently:\n${error}`, {
+                  duration: 6000,
+                });
+              }
               break;
           }
         } catch {

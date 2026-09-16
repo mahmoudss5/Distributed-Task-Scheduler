@@ -1,9 +1,9 @@
 export interface Job {
   id: string;
   type: string;
-  priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+  priority: 'LOW' | 'MEDIUM' | 'HIGH';
   priorityLevel: string;
-  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'CANCELED' | 'DEAD';
   executeAt: string;
   workerId?: string;
   createdAt: string;
@@ -37,8 +37,8 @@ export interface QueueItem {
 }
 
 export interface JobFormData {
-  type: string;
-  priority: string;
+  type: 'sendEmail' | 'generateReport';
+  priority: 'LOW' | 'MEDIUM' | 'HIGH';
   schedule: 'now' | 'later' | 'recurring';
   payload: string;
 }
@@ -47,5 +47,5 @@ export type ThemeMode = 'dark' | 'light';
 
 export interface WebSocketMessage {
   event: string;
-  data: unknown;
+  payload?: any;
 }

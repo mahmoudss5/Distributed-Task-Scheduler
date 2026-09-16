@@ -20,7 +20,7 @@ const JobSummary: React.FC<JobSummaryProps> = ({ form }) => (
 
     <div className="space-y-3 mb-4">
       {[
-        { label: 'Handler',          value: `${form.type.toLowerCase()}.send` },
+        { label: 'Handler',          value: form.type === 'sendEmail' ? 'Email' : 'Report' },
         { label: 'Priority',         value: form.priority,  highlight: true },
         { label: 'Schedule',         value: form.schedule === 'now' ? 'Immediately' : form.schedule === 'later' ? 'Delayed' : 'Recurring' },
         { label: 'Worker assignment', value: 'Automatic' },

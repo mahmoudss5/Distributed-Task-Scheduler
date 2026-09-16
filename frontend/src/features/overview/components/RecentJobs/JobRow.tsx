@@ -14,7 +14,7 @@ const typeIcons: Record<string, React.ReactNode> = {
 };
 
 const priorityIcon = (priority: Job['priority']) => {
-  if (priority === 'HIGH' || priority === 'CRITICAL') return <ChevronUp size={12} className="text-red-400" />;
+  if (priority === 'HIGH') return <ChevronUp size={12} className="text-red-400" />;
   if (priority === 'LOW') return <ChevronDown size={12} className="text-slate-500" />;
   return <Minus size={12} className="text-amber-400" />;
 };

@@ -15,7 +15,7 @@ const mockJobs: Job[] = [
   { id: 'ba4Tbnt', type: 'Email',   priority: 'HIGH',   priorityLevel: 'High',   status: 'PENDING',    executeAt: '', workerId: '-',         createdAt: '', updatedAt: '', retryCount: 0 },
   { id: 'e7f4bfe', type: 'Report',  priority: 'MEDIUM', priorityLevel: 'Normal', status: 'COMPLETED',  executeAt: '', workerId: 'worker-#3', createdAt: '', updatedAt: '', retryCount: 0, executionTime: '3.2 s' },
   { id: '7bb807',  type: 'Webhook', priority: 'LOW',    priorityLevel: 'Low',    status: 'COMPLETED',  executeAt: '', workerId: 'worker-#2', createdAt: '', updatedAt: '', retryCount: 0, executionTime: '348 ms' },
-  { id: 'e413bf0', type: 'Email',   priority: 'HIGH',   priorityLevel: 'Critical',status: 'COMPLETED', executeAt: '', workerId: 'worker-#1', createdAt: '', updatedAt: '', retryCount: 0, executionTime: '100 ms' },
+  { id: 'e413bf0', type: 'Email',   priority: 'HIGH',   priorityLevel: 'High',   status: 'COMPLETED', executeAt: '', workerId: 'worker-#1', createdAt: '', updatedAt: '', retryCount: 0, executionTime: '100 ms' },
   { id: '9b4c7c5', type: 'Report',  priority: 'HIGH',   priorityLevel: 'High',   status: 'COMPLETED',  executeAt: '', workerId: 'worker-#1', createdAt: '', updatedAt: '', retryCount: 0, executionTime: '3.1 s' },
   { id: '2f8a3d1', type: 'Webhook', priority: 'MEDIUM', priorityLevel: 'Normal', status: 'COMPLETED',  executeAt: '', workerId: 'worker-#2', createdAt: '', updatedAt: '', retryCount: 0, executionTime: '100 ms' },
 ];
