@@ -82,6 +82,29 @@ services:
     networks:
       - taskflow-net
 
+  kafka-init:
+    image: confluentinc/cp-kafka:7.4.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ['/bin/bash', '-c']
+    command:
+      - |
+        ensure_partitions() {
+          topic="$$1"
+          kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists \
+            --topic "$$topic" --partitions 4 --replication-factor 1
+          current=$$(kafka-topics --bootstrap-server kafka:9092 --describe --topic "$$topic" \
+            | awk -F'PartitionCount:' '{print $2}' | awk '{print $1}')
+          if [ "$${current:-0}" -lt 4 ]; then
+            kafka-topics --bootstrap-server kafka:9092 --alter --topic "$$topic" --partitions 4
+          fi
+        }
+        ensure_partitions job-ready
+        ensure_partitions job-dlq
+    networks:
+      - taskflow-net
+
   # ─── Application Services ──────────────────────────────────────────
 
   backend:
@@ -91,7 +114,6 @@ services:
       target: production
     deploy:
       replicas: 4
-    container_name: backend_container
     restart: unless-stopped
     env_file:
       - backend/.env
@@ -103,10 +125,9 @@ services:
       DB_PASSWORD: ${MYSQL_PASSWORD}
       DB_NAME: ${MYSQL_DATABASE}
       KAFKA_BROKER: kafka:9092
+      KAFKA_GROUP_ID: taskflow-workers
       REDIS_HOST: redis
       REDIS_PORT: 6379
-    ports:
-      - "3000:3000"
     depends_on:
       mysql:
         condition: service_healthy
@@ -114,6 +135,8 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
     networks:
       - taskflow-net
 

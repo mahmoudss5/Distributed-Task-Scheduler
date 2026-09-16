@@ -1,4 +1,4 @@
-FROM node:24-alpine
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
@@ -8,9 +8,11 @@ RUN npm ci
 
 COPY . .
 
-# Build the static production bundle
 RUN npm run build
 
-EXPOSE 80
+FROM nginx:1.27-alpine
 
-CMD ["npx", "serve", "-s", "dist", "-l", "80"]
+COPY --from=builder /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80

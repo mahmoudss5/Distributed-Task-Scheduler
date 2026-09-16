@@ -119,18 +119,19 @@ cp backend/.env.example backend/.env
 docker compose up --build
 ```
 
-This starts all 6 services in order:
+This starts the infrastructure, Kafka topic initializer, four backend/worker replicas, and the Nginx frontend gateway:
 1. `mysql` → waits until healthy
 2. `redis` → waits until healthy
 3. `zookeeper` → waits until healthy
 4. `kafka` → waits until Zookeeper is ready
-5. `backend` → waits until MySQL, Redis, and Kafka are healthy
-6. `frontend` → starts after backend
+5. `kafka-init` → creates `job-ready` and `job-dlq` with four partitions
+6. `backend` → runs four replicas in the same Kafka consumer group
+7. `frontend` → Nginx serves the React app and load-balances HTTP/WebSocket traffic to the backend replicas
 
 | Service  | URL                                           |
 |----------|-----------------------------------------------|
 | Frontend | http://localhost                              |
-| Backend  | http://localhost:3000                         |
+| Backend/API | available through Nginx at `http://localhost/api`     |
 | MySQL    | `localhost:3307`                              |
 | Redis    | `localhost:6379`                              |
 | Kafka    | `localhost:29092` (external dev access)       |
@@ -151,6 +152,22 @@ npm install
 npm run dev
 ```
 Frontend available at **http://localhost:5173**
+
+### Worker scaling
+
+Workers are Kafka consumers, so Kafka distributes jobs across the four backend replicas using the shared consumer group. Nginx balances the HTTP API and WebSocket connections; it does not balance Kafka messages.
+
+For regular Docker Compose, scale the backend explicitly:
+
+```bash
+docker compose up --build --scale backend=4
+```
+
+For Docker Swarm, the existing `deploy.replicas: 4` setting is used by:
+
+```bash
+docker stack deploy -c docker-compose.yml taskflow
+```
 
 ---
 
