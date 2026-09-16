@@ -42,10 +42,7 @@ export class LeaderElectionService {
         }
 
 
-        const currentLeader = await this.redisService.get(this.LEADER_KEY);
-
-        if (currentLeader === this.instanceId) {
-            await this.redisService.set(this.LEADER_KEY, this.instanceId, this.TTL);
+        if (await this.redisService.renewLease(this.LEADER_KEY, this.instanceId, this.TTL)) {
             this.isLeader = true;
         } else {
             this.isLeader = false;
@@ -54,6 +51,17 @@ export class LeaderElectionService {
 
     amILeader(): boolean {
         return this.isLeader;
+    }
+
+    async ensureLeadership(): Promise<boolean> {
+        if (!this.isLeader) return false;
+        const stillLeader = await this.redisService.renewLease(
+            this.LEADER_KEY,
+            this.instanceId,
+            this.TTL,
+        );
+        this.isLeader = stillLeader;
+        return stillLeader;
     }
 
 }

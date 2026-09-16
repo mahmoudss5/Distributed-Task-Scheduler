@@ -3,10 +3,9 @@ import { ClientKafka } from '@nestjs/microservices';
 import { Interval } from '@nestjs/schedule';
 import { Repository } from 'typeorm';
 import { InjectRepository } from '@nestjs/typeorm';
-import { JobStatus } from '../jobs/entites/job-status.enum';
 import { Job } from '../jobs/entites/job.entity';
+import { JobStatus } from '../jobs/entites/job-status.enum';
 import { JobsServiceService } from '../jobs/jobs-service/jobs-service.service';
-import { of } from 'rxjs';
 import { Worker } from '../worker/entities/worker.entity';
 import { RedisService } from '../redis/redis.service';
 import { LeaderElectionService } from './LeaderElectionService';
@@ -14,6 +13,7 @@ import { JobPriorityLevel } from '../jobs/entites/job-priority-level.enum';
 import { KafkaLagService } from './kafka-lag.service';
 import { AuditLogService } from '../audit-log/audit-log.service';
 import { AuditLogAction } from '../audit-log/enums/audit-log-action.enum';
+import { lastValueFrom } from 'rxjs';
 
 @Injectable()
 export class SchedulerService {
@@ -33,64 +33,73 @@ export class SchedulerService {
   async increaseJobPriority() {
     if (!this.leaderElectionService.amILeader()) return;
     let jobList: Job[] = await this.jobsService.fetchPendingJobsForScheduler();
-    jobList.forEach((job) => {
+    for (const job of jobList) {
       job.priority = job.priority + 2;
+      let priorityLevel = job.priorityLevel;
       if (
         job.priority >= 10 &&
         job.priority <= 15 &&
         job.priorityLevel !== JobPriorityLevel.MEDIUM
       ) {
-        this.jobsService.updateJobPriorityLevel(
-          job.id,
-          JobPriorityLevel.MEDIUM,
-        );
+        priorityLevel = JobPriorityLevel.MEDIUM;
       }
       if (job.priority >= 15 && job.priorityLevel !== JobPriorityLevel.HIGH) {
-        this.jobsService.updateJobPriorityLevel(job.id, JobPriorityLevel.HIGH);
+        priorityLevel = JobPriorityLevel.HIGH;
       }
-    });
+      await this.jobRepository.update(job.id, { priority: job.priority, priorityLevel });
+    }
   }
 
-  @Interval(20000)
-  async scheduleJob(): Promise<void> {
-    // check if this workere is the leader
-    if (!this.leaderElectionService.amILeader()) {
-      return;
-    }
-    // Check if there are already too many jobs queued up in Kafka (lag > 10)
-    const lag = await this.kafkaLagService.getConsumerLag('job-ready', 'my-app');
+
+  async checkLag(): Promise<boolean> {
+    const lag = await this.kafkaLagService.getConsumerLag(
+      'job-ready',
+      process.env.KAFKA_GROUP_ID ?? 'taskflow-workers',
+    );
     if (lag > 10) {
-      console.log(`Kafka lag is ${lag} (> 10). Pausing job scheduling.`);
       await this.auditLogService.createLog(
         AuditLogAction.SCHEDULER_PAUSED,
         'Scheduler',
         'System',
         undefined,
-        { lag, reason: 'Kafka consumer lag exceeded threshold of 10' }
+        { lag, reason: 'Kafka consumer lag exceeded threshold of 10' },
       );
+      return false;
+    }
+    return true;
+  }
+
+  @Interval(20000)
+  async scheduleJob(): Promise<void> {
+    // check if this workere is the leader
+    if (!(await this.leaderElectionService.ensureLeadership())) {
       return;
     }
-
+    // Check if there are already too many jobs queued up in Kafka (lag > 10)
+    if (!(await this.checkLag())) {
+      return;
+    }
     let jobList: Job[] = await this.jobsService.fetchPendingJobsForScheduler();
     for (const job of jobList) {
-      if (job.runAt > new Date()) {
+      if (!(await this.leaderElectionService.ensureLeadership())) return;
+      const scheduledAt = job.runAt ?? job.executeAt;
+      if (scheduledAt && scheduledAt > new Date()) {
         continue;
       }
       // check idempotency key
       const key=`job-idempotency-key:${job.id}`;
-      if(await this.redisService.get(key)){
-        console.log(`Job ${job.id} is already being processed.`);
+      if (!(await this.redisService.setNX(key, 'true', 240))) {
         continue;
       }
-      else{
-        this.kafkaClient.emit('job-ready', {
+      try {
+        await lastValueFrom(this.kafkaClient.emit('job-ready', {
           jobId: job.id,
           jobData: job.jobPayload,
-        });
-        this.redisService.set(key,'true',60);
+        }));
+      } catch (error) {
+        await this.redisService.del(key);
+        throw error;
       }
-
-      await this.jobsService.updateJobStatus(job.id, JobStatus.PROCESSING);
     }
   }
 

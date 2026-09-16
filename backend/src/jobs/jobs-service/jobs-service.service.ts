@@ -1,4 +1,10 @@
-import { Injectable, Inject, forwardRef } from '@nestjs/common';
+import {
+  BadRequestException,
+  forwardRef,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Job } from '../entites/job.entity';
 import { Repository } from 'typeorm';
@@ -73,7 +79,14 @@ export class JobsServiceService {
     const priorityLevel = job.priorityLevel || JobPriorityLevel.LOW;
     job.priority = this.getPriorityNumber(priorityLevel);
 
-    const newJob = this.jobRepository.create({ ...job, userId });
+    const newJob = this.jobRepository.create({
+      ...job,
+      userId,
+      runAt: job.runAt ?? job.executeAt ?? new Date(),
+      retryCount: job.retryCount ?? 3,
+      attemptCount: 0,
+      isCanceled: false,
+    });
     const savedJob = await this.jobRepository.save(newJob);
     let savedJobResponse = this.convertToResponse(savedJob);
 
@@ -163,12 +176,21 @@ export class JobsServiceService {
     });
   }
 
-  async deleteJob(id: string, userId?: string): Promise<void> {
+  async deleteJob(id: string, userId?: string): Promise<{ deleted: boolean }> {
     const where: any = { id };
     if (userId) where.userId = userId;
-    await this.jobRepository.delete(where);
-    this.eventsGateway.broadcastJobStatusChanged();
-    this.eventsGateway.broadcastStatsUpdate();
+    const job = await this.jobRepository.findOne({ where });
+    if (!job) return { deleted: false };
+    if (job.status === JobStatus.PROCESSING) {
+      throw new BadRequestException('Cannot delete a processing job');
+    }
+    const result = await this.jobRepository.delete(where);
+    if ((result.affected ?? 0) > 0) {
+      this.eventsGateway.broadcastJobStatusChanged();
+      this.eventsGateway.broadcastStatsUpdate();
+      return { deleted: true };
+    }
+    return { deleted: false };
   }
   async updateJobStatus(id: string, status: JobStatus): Promise<void> {
     await this.jobRepository.update(id, { status });
@@ -179,12 +201,16 @@ export class JobsServiceService {
     await this.jobRepository.update(id, { workerId });
   }
 
-  async updateJobRetryDelay(id: string, power: number): Promise<void> {
-    const job = await this.getJobById(id);
+  async updateJobRetryDelay(id: string, power: number, workerId?: string): Promise<void> {
+    const where: any = { id, status: JobStatus.PROCESSING };
+    if (workerId) where.workerId = workerId;
+    const job = await this.jobRepository.findOne({ where });
     if (job) {
       const nextDate = new Date();
       nextDate.setMinutes(nextDate.getMinutes() + 2 ** power);
       job.runAt = nextDate;
+      job.status = JobStatus.PENDING;
+      job.retryCount = Math.max(0, job.retryCount - 1);
       await this.jobRepository.save(job);
     }
   }
@@ -200,13 +226,14 @@ export class JobsServiceService {
     }
   }
 
-  async claimJob(jobId:string): Promise<boolean> {
-
+  async claimJob(jobId: string, workerId: string): Promise<boolean> {
     const result = await this.jobRepository
       .createQueryBuilder()
       .update(Job)
       .set({
         status: JobStatus.PROCESSING,
+        workerId,
+        attemptCount: () => 'attemptCount + 1',
       })
       .where('id = :id', { id: jobId })
       .andWhere('status = :status', {
@@ -225,7 +252,7 @@ export class JobsServiceService {
       priority: currentJob.priority,
       priorityLevel: currentJob.priorityLevel,
       cron: currentJob.cron,
-      retryCount: 3, // Assuming 3 is the default max retries
+      retryCount: 3,
       runAt: nextRun,
       status: JobStatus.PENDING,
     });
@@ -236,11 +263,49 @@ export class JobsServiceService {
   async executeJob(currentJob: Job): Promise<void> {
     const type = currentJob.type;
     if (type === JobType.sendEmail) {
-      await this.emailService.sendEmail(currentJob.jobPayload.to, currentJob.jobPayload.subject, currentJob.jobPayload.body);
+      await this.emailService.sendEmail(
+        currentJob.jobPayload.to,
+        currentJob.jobPayload.subject,
+        currentJob.jobPayload.body,
+      );
     }
     if (type === JobType.generateReport) {
-      const userId = typeof currentJob.jobPayload === 'string' ? currentJob.jobPayload : currentJob.jobPayload.userId;
+      const userId =
+        typeof currentJob.jobPayload === 'string'
+          ? currentJob.jobPayload
+          : currentJob.jobPayload.userId;
       await this.reportService.generatePdfReport(userId);
     }
+  }
+
+  async cancelJob(id: string, userId?: string): Promise<void> {
+    const job = await this.getJobById(id);
+    if (!job) {
+      throw new NotFoundException('Job not found');
+    }
+    const isOwner = userId ? job.userId === userId : true;
+    if (!isOwner) {
+      throw new BadRequestException('You are not authorized to cancel this job');
+    }
+    if (job.status !== JobStatus.PENDING) {
+      throw new BadRequestException('Only pending jobs can be canceled');
+    }
+    job.status = JobStatus.CANCELED;
+    job.isCanceled = true;
+    job.canceledAt = new Date();
+    const result = await this.jobRepository.update(
+      { id, userId: job.userId, status: JobStatus.PENDING },
+      { status: JobStatus.CANCELED, isCanceled: true, canceledAt: new Date() },
+    );
+    if (result.affected !== 1) {
+      throw new BadRequestException('Job is no longer pending');
+    }
+    this.eventsGateway.broadcastJobStatusChanged();
+    this.eventsGateway.broadcastStatsUpdate();
+  }
+
+  async isCanceled(id: string): Promise<boolean> {
+    const job = await this.getJobById(id);
+    return !job || job.isCanceled;
   }
 }

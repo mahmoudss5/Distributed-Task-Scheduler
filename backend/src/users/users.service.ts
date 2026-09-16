@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './entities/user.entity';
@@ -7,6 +7,7 @@ import { RedisService } from '../redis/redis.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UserResponseDto } from './dto/user-response.dto';
 import { PaginatedResponse } from '../common/dto/pagination.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 @Injectable()
 export class UsersService {
@@ -32,28 +33,34 @@ export class UsersService {
 
   async forgotPassword(email: string): Promise<void> {
     const user = await this.findByEmail(email);
-    if (!user) {
-      throw new NotFoundException('User not found');
+    if (user) {
+      await this.emailService.sendOtp(email);
     }
-    await this.emailService.sendOtp(email);
   }
 
-  async resetPassword(resetPasswordDto: any): Promise<void> {
+  async resetPassword(resetPasswordDto: ResetPasswordDto): Promise<void> {
     const { email, otp, newPassword } = resetPasswordDto;
     const storedOtp = await this.redisService.get(`otp:${email}`);
     
     if (!storedOtp || storedOtp !== otp) {
+      const attemptsKey = `otp-attempts:${email}`;
+      const attempts = await this.redisService.increment(attemptsKey);
+      if (attempts === 1) await this.redisService.expire(attemptsKey, 5 * 60);
+      if (attempts > 5) {
+        throw new BadRequestException('Too many invalid OTP attempts');
+      }
       throw new BadRequestException('Invalid or expired OTP');
     }
 
     const user = await this.findByEmail(email);
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new BadRequestException('Invalid or expired OTP');
     }
 
     user.password = newPassword;
     await this.userRepository.save(user);
     await this.redisService.del(`otp:${email}`);
+    await this.redisService.del(`otp-attempts:${email}`);
   }
 
   async getAllUsers(page: number, limit: number): Promise<PaginatedResponse<UserResponseDto>> {

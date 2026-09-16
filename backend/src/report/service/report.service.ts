@@ -6,6 +6,7 @@ import { Report } from '../entities/report.entity';
 import * as puppeteer from 'puppeteer';
 import * as path from 'path';
 import * as fs from 'fs';
+import { AuditLogDto } from '../../audit-log/entities/AuditLogDto';
 
 @Injectable()
 export class ReportService {
@@ -15,16 +16,19 @@ export class ReportService {
     private readonly reportRepository: Repository<Report>,
   ) {}
 
-  async generateReport(userId: string): Promise<string> {
-    const allLogs = await this.auditLogService.findByUser(userId);
+  private escapeHtml(value: unknown): string {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
 
-    // Filter logs for the last 7 days
+  async generateReport(userId: string): Promise<string> {
     const oneWeekAgo = new Date();
     oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-
-    const recentLogs = allLogs.filter(
-      (log) => new Date(log.createdAt) >= oneWeekAgo,
-    );
+    const recentLogs = await this.auditLogService.findRecentByUser(userId, oneWeekAgo);
 
     // Generate HTML with Tailwind styling
     const html = `
@@ -73,21 +77,21 @@ export class ReportService {
                     <tbody class="bg-white divide-y divide-gray-200">
                         ${recentLogs
                           .map(
-                            (log) => `
+                            (log: AuditLogDto) => `
                         <tr class="hover:bg-gray-50 transition-colors">
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                                ${new Date(log.createdAt).toLocaleString()}
+                                ${this.escapeHtml(new Date(log.createdAt).toLocaleString())}
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap">
                                 <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                                    ${log.action}
+                                    ${this.escapeHtml(log.action)}
                                 </span>
                             </td>
                             <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-medium">
-                                ${log.entityName}
+                                ${this.escapeHtml(log.entityName)}
                             </td>
-                            <td class="px-6 py-4 text-sm text-gray-500 max-w-xs truncate" title='${log.details ? JSON.stringify(log.details).replace(/'/g, '&#39;') : '-'}'>
-                                ${log.details ? JSON.stringify(log.details) : '-'}
+                            <td class="px-6 py-4 text-sm text-gray-500 max-w-xs truncate" title="${this.escapeHtml(log.details ? JSON.stringify(log.details) : '-')}">
+                                ${this.escapeHtml(log.details ? JSON.stringify(log.details) : '-')}
                             </td>
                         </tr>
                         `,
@@ -116,10 +120,13 @@ export class ReportService {
   }
 
   async generatePdfReport(userId: string): Promise<Report> {
-    const browser = await puppeteer.launch({ args: ['--no-sandbox'] });
-    const page = await browser.newPage();
-    const html = await this.generateReport(userId);
-    await page.setContent(html, { waitUntil: 'load' });
+    const browser = await puppeteer.launch({ args: ['--no-sandbox'], timeout: 30_000 });
+    try {
+      const page = await browser.newPage();
+      page.setDefaultTimeout(30_000);
+      page.setDefaultNavigationTimeout(30_000);
+      const html = await this.generateReport(userId);
+      await page.setContent(html, { waitUntil: 'load' });
 
     // save locally on the backend
     const fileName = `report-${userId}-${Date.now()}.pdf`;
@@ -130,21 +137,27 @@ export class ReportService {
       fs.mkdirSync(reportsDir, { recursive: true });
     }
     
-    await page.pdf({
-      path: filePath,
-      format: 'A4',
-      printBackground: true,
-    });
+      await page.pdf({
+        path: filePath,
+        format: 'A4',
+        printBackground: true,
+      });
 
-    await browser.close();
-    
-    const newReport = this.reportRepository.create({
-      userId,
-      fileName,
-      filePath,
-    });
-    
-    return await this.reportRepository.save(newReport);
+      const newReport = this.reportRepository.create({
+        userId,
+        fileName,
+        filePath,
+      });
+
+      try {
+        return await this.reportRepository.save(newReport);
+      } catch (error) {
+        await fs.promises.unlink(filePath).catch(() => undefined);
+        throw error;
+      }
+    } finally {
+      await browser.close();
+    }
   }
 
   async findById(id: string): Promise<Report> {
@@ -153,5 +166,26 @@ export class ReportService {
       throw new NotFoundException(`Report with id ${id} not found`);
     }
     return report;
+  }
+
+  async findReportsByUser(userId: string, page: number = 1, limit: number = 10) {
+    const skip = (page - 1) * limit;
+    const [data, total] = await this.reportRepository.findAndCount({
+      where: { userId },
+      order: { createdAt: 'DESC' },
+      take: limit,
+      skip,
+    });
+    return { data, meta: { total, page, limit } };
+  }
+
+  async findAllReports(page: number = 1, limit: number = 10) {
+    const skip = (page - 1) * limit;
+    const [data, total] = await this.reportRepository.findAndCount({
+      order: { createdAt: 'DESC' },
+      take: limit,
+      skip,
+    });
+    return { data, meta: { total, page, limit } };
   }
 }

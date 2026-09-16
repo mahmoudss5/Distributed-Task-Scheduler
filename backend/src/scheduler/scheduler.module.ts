@@ -9,6 +9,7 @@ import { RedisModule } from '../redis/redis.module';
 import { Worker } from '../worker/entities/worker.entity';
 import { Job } from '../jobs/entites/job.entity';
 import { AuditLogModule } from '../audit-log/audit-log.module';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 
 @Module({
   imports: [
@@ -16,16 +17,21 @@ import { AuditLogModule } from '../audit-log/audit-log.module';
     JobsModule,
     RedisModule,
     AuditLogModule,
-    ClientsModule.register([
+    ConfigModule,
+    ClientsModule.registerAsync([
       {
         name: 'KAFKA_SERVICE',
-        transport: Transport.KAFKA,
-        options: {
-          client: {
-            clientId: 'my-app',
-            brokers: ['localhost:9092'],
+        imports: [ConfigModule],
+        inject: [ConfigService],
+        useFactory: (config: ConfigService) => ({
+          transport: Transport.KAFKA,
+          options: {
+            client: {
+              clientId: config.get<string>('KAFKA_CLIENT_ID', `taskflow-scheduler-${process.pid}`),
+              brokers: [config.get<string>('KAFKA_BROKER', 'localhost:9092')],
+            },
           },
-        },
+        }),
       },
     ]),
   ],

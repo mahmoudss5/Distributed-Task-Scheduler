@@ -8,6 +8,7 @@ import { PaginationQueryDto, PaginatedResponse } from '../common/dto/pagination.
 import { UserResponseDto } from './dto/user-response.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
 
 @Controller('users')
 export class UsersController {
@@ -19,8 +20,9 @@ export class UsersController {
   }
 
   @Post('forgot-password')
-  forgotPassword(@Body('email') email: string) {
-    return this.usersService.forgotPassword(email);
+  async forgotPassword(@Body() body: ForgotPasswordDto) {
+    await this.usersService.forgotPassword(body.email);
+    return { message: 'If the account exists, a password reset code has been sent' };
   }
 
   @Post('reset-password')

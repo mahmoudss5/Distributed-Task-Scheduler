@@ -1,7 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 import { JobType } from './job.type.enum';
 import { JobStatus } from './job-status.enum';
-import { JobPriority } from './job-priority.enum';
 import { JobPriorityLevel } from './job-priority-level.enum';
 
 @Entity()
@@ -9,7 +8,7 @@ export class Job {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column('jsonb')
+  @Column('json')
   jobPayload: any;
 
   @Column(
@@ -40,8 +39,8 @@ export class Job {
   })
   status: JobStatus;
 
-  @Column()
-  executeAt: Date;
+  @Column({ type: 'datetime', nullable: true })
+  executeAt?: Date;
 
   @Column()
   userId: string;
@@ -55,9 +54,18 @@ export class Job {
   @Column({ nullable: true })
   cron?: string;
 
-  @Column({ nullable: true })
-  runAt: Date;
+  @Column({ type: 'datetime', nullable: true })
+  runAt?: Date;
 
-  @Column()
+  @Column({ default: 3 })
   retryCount: number;
+
+  @Column({ default: 0 })
+  attemptCount: number;
+
+  @Column({ default: false })
+  isCanceled: boolean;
+
+  @Column({ nullable: true })
+  canceledAt?: Date;
 }

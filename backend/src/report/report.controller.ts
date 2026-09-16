@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Param, Res, NotFoundException, UseGuards } from '@nestjs/common';
+import { Controller, Post, Get, Param, Res, NotFoundException, UseGuards, Query } from '@nestjs/common';
 import { ReportService } from './service/report.service';
 import type { Response } from 'express';
 import * as fs from 'fs';
@@ -7,8 +7,12 @@ import { JobType } from '../jobs/entites/job.type.enum';
 import { JobPriorityLevel } from '../jobs/entites/job-priority-level.enum';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { PaginationQueryDto } from '../common/dto/pagination.dto';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { Roles } from '../common/decorators/roles.decorator';
+import { Role } from '../common/enums/role.enum';
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('reports')
 export class ReportController {
   constructor(
@@ -29,6 +33,32 @@ export class ReportController {
       message: 'Report generation job submitted successfully',
       jobId: job.id,
     };
+  }
+
+  @Get('status/:jobId')
+  async getReportStatus(@Param('jobId') jobId: string, @CurrentUser() user: any) {
+    const job = await this.jobsService.getJobById(jobId, user.id);
+    if (!job) {
+      throw new NotFoundException('Report generation job not found');
+    }
+    return {
+      jobId: job.id,
+      status: job.status,
+    };
+  }
+
+  @Get()
+  async getMyReports(
+    @Query() query: PaginationQueryDto,
+    @CurrentUser() user: any
+  ) {
+    return this.reportService.findReportsByUser(user.id, query.page || 1, query.limit || 10);
+  }
+
+  @Roles(Role.ADMIN)
+  @Get('all')
+  async getAllReports(@Query() query: PaginationQueryDto) {
+    return this.reportService.findAllReports(query.page || 1, query.limit || 10);
   }
 
   @Get('download/:id')

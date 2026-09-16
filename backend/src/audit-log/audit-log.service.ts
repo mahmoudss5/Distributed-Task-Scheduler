@@ -4,6 +4,8 @@ import { Repository } from 'typeorm';
 import { AuditLog } from './entities/audit-log.entity';
 import { AuditLogAction } from './enums/audit-log-action.enum';
 import { AuditLogDto } from './entities/AuditLogDto';
+import { PaginatedResponse } from '../common/dto/pagination.dto';
+import { MoreThanOrEqual } from 'typeorm';
 
 @Injectable()
 export class AuditLogService {
@@ -29,21 +31,47 @@ export class AuditLogService {
     return this.auditLogRepository.save(newLog);
   }
 
-  async findAll(): Promise<AuditLogDto[]> {
-    let allLogs=await this.auditLogRepository.find();
-    return allLogs.map(log => this.toDto(log));
+  async findAll(page: number = 1, limit: number = 10): Promise<PaginatedResponse<AuditLogDto>> {
+    const [data, total] = await this.auditLogRepository.findAndCount({
+      order: { createdAt: 'DESC' },
+      take: limit,
+      skip: (page - 1) * limit,
+    });
+    return {
+      data: data.map(log => this.toDto(log)),
+      meta: { total, page, limit },
+    };
   }
 
-  async findByEntity(entityName: string, entityId: string): Promise<AuditLogDto[]> {
-    let allLogs=await this.auditLogRepository.find({
+  async findByEntity(entityName: string, entityId: string, page: number = 1, limit: number = 10): Promise<PaginatedResponse<AuditLogDto>> {
+    const [data, total] = await this.auditLogRepository.findAndCount({
       where: { entityName, entityId },
       order: { createdAt: 'DESC' },
+      take: limit,
+      skip: (page - 1) * limit,
     });
-    return allLogs.map(log => this.toDto(log));
+    return {
+      data: data.map(log => this.toDto(log)),
+      meta: { total, page, limit },
+    };
   }
-  async findByUser(userId: string): Promise<AuditLogDto[]> {
-    let allLogs=await this.auditLogRepository.find({
+
+  async findByUser(userId: string, page: number = 1, limit: number = 10): Promise<PaginatedResponse<AuditLogDto>> {
+    const [data, total] = await this.auditLogRepository.findAndCount({
       where: { userId },
+      order: { createdAt: 'DESC' },
+      take: limit,
+      skip: (page - 1) * limit,
+    });
+    return {
+      data: data.map(log => this.toDto(log)),
+      meta: { total, page, limit },
+    };
+  }
+
+  async findRecentByUser(userId: string, fromDate: Date): Promise<AuditLogDto[]> {
+    const allLogs = await this.auditLogRepository.find({
+      where: { userId, createdAt: MoreThanOrEqual(fromDate) },
       order: { createdAt: 'DESC' },
     });
     return allLogs.map(log => this.toDto(log));

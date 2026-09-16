@@ -1,12 +1,14 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
 import { ConfigService } from '@nestjs/config';
 import { AuditLogService } from '../../audit-log/audit-log.service';
 import { AuditLogAction } from '../../audit-log/enums/audit-log-action.enum';
 import {RedisService} from "../../redis/redis.service";
+import { randomInt } from 'crypto';
 
 @Injectable()
 export class EmailService  implements OnModuleInit{
+  private readonly logger = new Logger(EmailService.name);
   private readonly transporter: nodemailer.Transporter;
   private readonly emailUser: string;
 
@@ -28,9 +30,9 @@ export class EmailService  implements OnModuleInit{
   async onModuleInit() {
     try {
       await this.transporter.verify();
-      console.log('Gmail connection is working');
+      this.logger.log('Gmail connection is working');
     } catch (error) {
-      console.error('Gmail connection failed', error);
+      this.logger.error('Gmail connection failed', error);
       await this.auditLogService.createLog(
         AuditLogAction.EMAIL_CONNECTION_FAILED,
         'EmailService',
@@ -49,20 +51,22 @@ export class EmailService  implements OnModuleInit{
     return this.redisService.set(key,opt,expirationTimeInSeconds);
   }
 
-  generateOtp():string{
-    let len:number=6;
-    let chars='0123456789';
-    let otp='';
-    for(let i=0;i<len;i++){
-      otp+=chars.charAt(Math.floor(Math.random()*chars.length));
-    }
-    return otp;
+  generateOtp(): string {
+    return randomInt(100000, 1000000).toString();
   }
 
 
 
 
   async sendOtp(to: string) {
+    const requestKey = `otp-requests:${to.toLowerCase()}`;
+    const requestCount = await this.redisService.increment(requestKey);
+    if (requestCount === 1) {
+      await this.redisService.expire(requestKey, 15 * 60);
+    }
+    if (requestCount > 3) {
+      throw new HttpException('Too many OTP requests', HttpStatus.TOO_MANY_REQUESTS);
+    }
     const otp = this.generateOtp();
     await this.storeOtpInRedis(otp, to);
 

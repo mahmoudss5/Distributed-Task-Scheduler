@@ -3,13 +3,14 @@ import { JobsServiceService } from './jobs-service/jobs-service.service';
 import { JobsControllerController } from './jobs-controller/jobs-controller.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Job } from './entites/job.entity';
+import { JobFailure } from './entites/job-failure.entity';
 import { ReportModule } from '../report/report.module';
 import { EmailModule } from '../email/email.module';
 import { EventsModule } from '../events/events.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Job]),
+    TypeOrmModule.forFeature([Job, JobFailure]),
     EventsModule,
     forwardRef(() => ReportModule),
     forwardRef(() => EmailModule),

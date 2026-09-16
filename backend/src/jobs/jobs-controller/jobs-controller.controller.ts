@@ -5,6 +5,8 @@ import {
   Post,
   Delete,
   Body,
+  Param,
+  NotFoundException,
   UseGuards,
   Query,
 } from '@nestjs/common';
@@ -18,6 +20,7 @@ import { Role } from '../../common/enums/role.enum';
 import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { CreateJobDto } from '../Dtos/create-job.dto';
 import { PaginationQueryDto, PaginatedResponse } from '../../common/dto/pagination.dto';
+import { RateLimit } from '../../common/decorators/rate-limit.decorator';
 
 @UseGuards(JwtAuthGuard)
 @Controller('jobs')
@@ -28,6 +31,7 @@ export class JobsControllerController {
   ) {}
 
   @Post('/create')
+  @RateLimit({ limit: 5, windowSeconds: 60, keyPrefix: 'jobs-create' })
   async createJob(
     @Body() createJobDto: CreateJobDto,
     @CurrentUser() user: any,
@@ -82,6 +86,13 @@ export class JobsControllerController {
     return await this.jobsService.findAllJobs(query.page || 1, query.limit || 10, user.id);
   }
 
+  @Get('by-id/:id')
+  async getJobById(@Param('id') id: string, @CurrentUser() user: any): Promise<Job> {
+    const job = await this.jobsService.getJobById(id, user.id);
+    if (!job) throw new NotFoundException('Job not found');
+    return job;
+  }
+
   @Roles(Role.ADMIN)
   @UseGuards(RolesGuard)
   @Get('/all')
@@ -93,8 +104,12 @@ export class JobsControllerController {
   }
 
   @Delete('/delete/:id')
-  async deleteJob(@Body('id') id: string, @CurrentUser() user: any): Promise<void> {
-    await this.jobsService.deleteJob(id, user.id);
+  async deleteJob(@Param('id') id: string, @CurrentUser() user: any): Promise<{ deleted: boolean }> {
+    return await this.jobsService.deleteJob(id, user.id);
+  }
+
+  @Post('/cancel/:id')
+  async cancelJob(@Param('id') id: string, @CurrentUser() user: any): Promise<void> {
+    await this.jobsService.cancelJob(id, user.id);
   }
 }
-

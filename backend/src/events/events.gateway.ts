@@ -11,17 +11,17 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
-  handleConnection(client: any) {
+  handleConnection(_client: any) {
     console.log('Client connected to WebSockets');
   }
 
-  handleDisconnect(client: any) {
+  handleDisconnect(_client: any) {
     console.log('Client disconnected from WebSockets');
   }
 
-  private broadcast(event: string) {
+  private broadcast(event: string, payload?: any) {
     if (this.server && this.server.clients) {
-      const message = JSON.stringify({ event });
+      const message = JSON.stringify({ event, payload });
       this.server.clients.forEach((client: any) => {
         // Only send if the connection is open
         if (client.readyState === 1) { // 1 = OPEN in ws
@@ -41,5 +41,9 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   broadcastStatsUpdate() {
     this.broadcast('stats-update');
+  }
+
+  broadcastJobFailed(jobId: string, error: string, type: string) {
+    this.broadcast('job-failed', { jobId, error, type });
   }
 }

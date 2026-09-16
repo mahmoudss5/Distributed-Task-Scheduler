@@ -1,9 +1,10 @@
-import { IsString, IsOptional, IsEnum, IsObject, IsDateString } from 'class-validator';
+import { IsOptional, IsEnum, IsObject, IsDateString, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
 import { JobPriorityLevel } from '../entites/job-priority-level.enum';
 import { JobType } from '../entites/job.type.enum';
 
 export class CreateJobDto {
-  @IsString()
+  @IsEnum(JobType)
   type: JobType;
 
   @IsObject()
@@ -19,5 +20,6 @@ export class CreateJobDto {
 
   @IsOptional()
   @IsDateString()
+  @Type(() => Date)
   executeAt?: Date;
 }

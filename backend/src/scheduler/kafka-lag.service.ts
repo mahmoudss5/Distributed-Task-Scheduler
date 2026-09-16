@@ -1,16 +1,19 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
 import { Kafka, Admin } from 'kafkajs';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class KafkaLagService implements OnModuleInit, OnModuleDestroy {
   private admin: Admin;
   private readonly logger = new Logger(KafkaLagService.name);
 
+  constructor(private readonly config: ConfigService) {}
+
   async onModuleInit() {
     // Instantiate a dedicated Kafka admin client to monitor topic offsets
     const kafka = new Kafka({
       clientId: 'admin-lag-monitor',
-      brokers: ['localhost:9092'], // Should ideally come from ConfigService
+      brokers: [this.config.get<string>('KAFKA_BROKER', 'localhost:9092')],
     });
     
     this.admin = kafka.admin();
@@ -30,6 +33,7 @@ export class KafkaLagService implements OnModuleInit, OnModuleDestroy {
 
   async getConsumerLag(topic: string, groupId: string): Promise<number> {
     try {
+      if (!this.admin) return 0;
       const topicOffsets = await this.admin.fetchTopicOffsets(topic);
       const groupOffsets = await this.admin.fetchOffsets({ groupId, topics: [topic] });
 
