@@ -21,6 +21,7 @@ import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 import { CreateJobDto } from '../Dtos/create-job.dto';
 import { PaginationQueryDto, PaginatedResponse } from '../../common/dto/pagination.dto';
 import { RateLimit } from '../../common/decorators/rate-limit.decorator';
+import { AllJobsDto } from '../Dtos/allJobs.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('jobs')
@@ -111,5 +112,9 @@ export class JobsControllerController {
   @Post('/cancel/:id')
   async cancelJob(@Param('id') id: string, @CurrentUser() user: any): Promise<void> {
     await this.jobsService.cancelJob(id, user.id);
+  }
+  @Get('/allJobsCountDetails')
+  async getAllJobsCountDetails(@CurrentUser() user: any): Promise<AllJobsDto> {
+    return await this.jobsService.getAllJobs();
   }
 }

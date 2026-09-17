@@ -5,7 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { CronExpressionParser } from 'cron-parser';
-import { ClientKafka, MessagePattern } from '@nestjs/microservices';
+import { ClientKafka } from '@nestjs/microservices';
 import { Interval } from '@nestjs/schedule';
 import { RedisService } from '../../redis/redis.service';
 import { Repository } from 'typeorm';
@@ -39,7 +39,6 @@ export class WorkerService implements OnApplicationShutdown {
     private readonly jobService: JobsServiceService,
     private readonly eventsGateway: EventsGateway,
   ) {
-    kafkaClient.connect();
     this.registerWorker();
   }
 
@@ -91,10 +90,10 @@ export class WorkerService implements OnApplicationShutdown {
     }
   }
 
-  @MessagePattern('job-ready')
   async handleJobReadyMessage(message: any): Promise<void> {
     await this.applyBackpressure();
-    const { jobId } = message.value;
+    const { jobId } = message;
+    this.logger.log(`Received job-ready event for job ${jobId}`);
     if (await this.jobService.isCanceled(jobId)) {
       this.logger.warn(`Job ${jobId} has been canceled. Skipping execution.`);
       return;

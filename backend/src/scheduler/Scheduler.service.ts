@@ -1,4 +1,4 @@
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, Logger } from '@nestjs/common';
 import { ClientKafka } from '@nestjs/microservices';
 import { Interval } from '@nestjs/schedule';
 import { Repository } from 'typeorm';
@@ -17,6 +17,7 @@ import { lastValueFrom } from 'rxjs';
 
 @Injectable()
 export class SchedulerService {
+  private readonly logger = new Logger(SchedulerService.name);
   constructor(
     @Inject('KAFKA_SERVICE') private readonly kafkaClient: ClientKafka,
     private readonly redisService: RedisService,
@@ -54,7 +55,7 @@ export class SchedulerService {
   async checkLag(): Promise<boolean> {
     const lag = await this.kafkaLagService.getConsumerLag(
       'job-ready',
-      process.env.KAFKA_GROUP_ID ?? 'taskflow-workers',
+      `${process.env.KAFKA_GROUP_ID ?? 'taskflow-workers'}-server`,
     );
     if (lag > 10) {
       await this.auditLogService.createLog(
@@ -96,6 +97,7 @@ export class SchedulerService {
           jobId: job.id,
           jobData: job.jobPayload,
         }));
+        this.logger.log(`Published job-ready event for job ${job.id}`);
       } catch (error) {
         await this.redisService.del(key);
         throw error;

@@ -8,17 +8,14 @@ services:
     restart: unless-stopped
     env_file:
       - backend/.env
-    environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${MYSQL_DATABASE}
-      MYSQL_USER: ${MYSQL_USER}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     volumes:
       - distributed-Task-Db:/var/lib/mysql
     ports:
       - "3307:3306"
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      # $$ defers expansion to the container; Compose otherwise looks for this
+      # value in the shell/root .env instead of backend/.env.
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -50,7 +47,8 @@ services:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
     healthcheck:
-      test: ["CMD", "bash", "-c", "echo ruok | nc localhost 2181 | grep imok"]
+      # cp-zookeeper enables `srvr` by default but keeps `ruok` disabled.
+      test: ["CMD-SHELL", "echo srvr | nc -w 2 localhost 2181 | grep -q 'Mode:'"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -121,13 +119,11 @@ services:
       NODE_ENV: production
       DB_HOST: mysql
       DB_PORT: 3306
-      DB_USER: ${MYSQL_USER}
-      DB_PASSWORD: ${MYSQL_PASSWORD}
-      DB_NAME: ${MYSQL_DATABASE}
       KAFKA_BROKER: kafka:9092
       KAFKA_GROUP_ID: taskflow-workers
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      CORS_ORIGIN: http://localhost,http://localhost:5173
     depends_on:
       mysql:
         condition: service_healthy

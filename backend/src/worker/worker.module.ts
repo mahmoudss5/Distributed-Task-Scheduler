@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { WorkerService } from './workerService/worker.service';
+import { WorkerController } from './worker.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -37,6 +38,7 @@ import { EventsModule } from '../events/events.module';
     JobsModule,
     EventsModule,
   ],
+  controllers: [WorkerController],
   providers: [WorkerService],
 })
 export class WorkerModule {}

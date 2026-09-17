@@ -4,12 +4,12 @@ import {
   OnGatewayConnection,
   OnGatewayDisconnect,
 } from '@nestjs/websockets';
-import { Server } from 'ws';
+import ws from 'ws';
 
 @WebSocketGateway()
 export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
-  server: Server;
+  server: ws.Server;
 
   handleConnection(_client: any) {
     console.log('Client connected to WebSockets');
@@ -24,7 +24,7 @@ export class EventsGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const message = JSON.stringify({ event, payload });
       this.server.clients.forEach((client: any) => {
         // Only send if the connection is open
-        if (client.readyState === 1) { // 1 = OPEN in ws
+        if (client.readyState === ws.OPEN) {
           client.send(message);
         }
       });

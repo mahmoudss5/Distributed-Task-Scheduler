@@ -16,6 +16,7 @@ import { PaginatedResponse } from '../../common/dto/pagination.dto';
 import { ReportService } from '../../report/service/report.service';
 import { EmailService } from '../../email/service/email.service';
 import { JobType } from '../entites/job.type.enum';
+import { AllJobsDto } from '../Dtos/allJobs.dto';
 
 @Injectable()
 export class JobsServiceService {
@@ -201,7 +202,11 @@ export class JobsServiceService {
     await this.jobRepository.update(id, { workerId });
   }
 
-  async updateJobRetryDelay(id: string, power: number, workerId?: string): Promise<void> {
+  async updateJobRetryDelay(
+    id: string,
+    power: number,
+    workerId?: string,
+  ): Promise<void> {
     const where: any = { id, status: JobStatus.PROCESSING };
     if (workerId) where.workerId = workerId;
     const job = await this.jobRepository.findOne({ where });
@@ -285,7 +290,9 @@ export class JobsServiceService {
     }
     const isOwner = userId ? job.userId === userId : true;
     if (!isOwner) {
-      throw new BadRequestException('You are not authorized to cancel this job');
+      throw new BadRequestException(
+        'You are not authorized to cancel this job',
+      );
     }
     if (job.status !== JobStatus.PENDING) {
       throw new BadRequestException('Only pending jobs can be canceled');
@@ -307,5 +314,19 @@ export class JobsServiceService {
   async isCanceled(id: string): Promise<boolean> {
     const job = await this.getJobById(id);
     return !job || job.isCanceled;
+  }
+
+  async getAllJobs(): Promise<AllJobsDto> {
+    const high = await this.jobRepository.count({
+      where: { priorityLevel: JobPriorityLevel.HIGH },
+    });
+    const medium = await this.jobRepository.count({
+      where: { priorityLevel: JobPriorityLevel.MEDIUM },
+    });
+    const low = await this.jobRepository.count({
+      where: { priorityLevel: JobPriorityLevel.LOW },
+    });
+
+    return { high, medium, low };
   }
 }

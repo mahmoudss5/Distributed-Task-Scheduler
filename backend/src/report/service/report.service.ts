@@ -130,7 +130,11 @@ export class ReportService {
 
     // save locally on the backend
     const fileName = `report-${userId}-${Date.now()}.pdf`;
-    const reportsDir = path.join(process.cwd(), 'reports');
+    // Keep generated files in a configurable location so containers can mount
+    // persistent storage instead of losing reports when they are recreated.
+    const reportsDir = path.resolve(
+      process.env.REPORTS_DIR ?? path.join(process.cwd(), 'reports'),
+    );
     const filePath = path.join(reportsDir, fileName);
     
     if (!fs.existsSync(reportsDir)) {

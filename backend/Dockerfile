@@ -24,4 +24,10 @@ RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
 
+# Mount this path in production so generated reports survive container
+# replacement.  The application can override it with REPORTS_DIR.
+RUN mkdir -p /app/reports
+VOLUME ["/app/reports"]
+EXPOSE 3000
+
 CMD ["node", "dist/main.js"]

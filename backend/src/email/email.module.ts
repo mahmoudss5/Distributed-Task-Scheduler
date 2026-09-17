@@ -9,6 +9,7 @@ import { AuditLogModule } from '../audit-log/audit-log.module';
   imports: [ConfigModule, RedisModule, AuditLogModule],
   providers: [EmailService],
   controllers: [EmailController],
-
+  // Consumers in UsersModule and JobsModule need the same configured mailer.
+  exports: [EmailService],
 })
 export class EmailModule {}
