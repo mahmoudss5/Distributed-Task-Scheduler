@@ -8,12 +8,15 @@ import LoginPage from './features/auth/LoginPage';
 import RegisterPage from './features/auth/RegisterPage';
 import ForgotPasswordPage from './features/auth/ForgotPasswordPage';
 import ResetPasswordPage from './features/auth/ResetPasswordPage';
+import JobFailuresPage from './features/jobFailures';
+import ReportsPage from './features/reports';
 import { useWebSocket } from './shared/websocket/useWebSocket';
+import { useAuth } from './context/AuthContext';
 
 
 const App: React.FC = () => {
-  // Ensure websocket only tries to connect when authenticated (you might need to update useWebSocket internally to respect this)
-  useWebSocket(); 
+  const { isAuthenticated } = useAuth();
+  useWebSocket(isAuthenticated);
 
   return (
     <>
@@ -29,6 +32,8 @@ const App: React.FC = () => {
       <Route element={<ProtectedRoute />}>
         <Route path="/" element={<OverviewPage />} />
         <Route path="/submit" element={<SubmitJobPage />} />
+        <Route path="/failures" element={<JobFailuresPage />} />
+        <Route path="/reports" element={<ReportsPage />} />
       </Route>
     </Routes>
     </>

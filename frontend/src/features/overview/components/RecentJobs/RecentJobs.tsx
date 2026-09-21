@@ -6,10 +6,11 @@ import JobRow from './JobRow';
 interface RecentJobsProps {
   jobs: Job[];
   isLoading: boolean;
+  isError: boolean;
   onRefresh: () => void;
 }
 
-const RecentJobs: React.FC<RecentJobsProps> = ({ jobs, isLoading, onRefresh }) => (
+const RecentJobs: React.FC<RecentJobsProps> = ({ jobs, isLoading, isError, onRefresh }) => (
   <div className="bg-slate-800/60 dark:bg-slate-900/60 border border-slate-700/50 rounded-xl backdrop-blur-sm">
     <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700/50">
       <div className="flex items-center gap-2">
@@ -24,9 +25,7 @@ const RecentJobs: React.FC<RecentJobsProps> = ({ jobs, isLoading, onRefresh }) =
         >
           <RefreshCw size={13} className={isLoading ? 'animate-spin' : ''} />
         </button>
-        <button className="text-xs text-violet-400 hover:text-violet-300 transition-colors">
-          Latest activity across all workers
-        </button>
+        <span className="text-xs text-slate-500">Your latest jobs</span>
       </div>
     </div>
 
@@ -34,7 +33,7 @@ const RecentJobs: React.FC<RecentJobsProps> = ({ jobs, isLoading, onRefresh }) =
       <table className="w-full">
         <thead>
           <tr className="border-b border-slate-700/30">
-            {['Job ID', 'Type', 'Priority', 'Status', 'Execution Time', 'Worker'].map((h) => (
+            {['Job ID', 'Type', 'Priority', 'Status', 'Submitted', 'Worker'].map((h) => (
               <th key={h} className="py-2 px-3 text-left text-xs font-medium text-slate-500 uppercase tracking-wider">
                 {h}
               </th>
@@ -52,7 +51,11 @@ const RecentJobs: React.FC<RecentJobsProps> = ({ jobs, isLoading, onRefresh }) =
                   ))}
                 </tr>
               ))
-            : jobs.map((job) => <JobRow key={job.id} job={job} />)
+            : isError ? (
+                <tr><td className="px-3 py-6 text-xs text-red-400" colSpan={6}>Your jobs could not be loaded. Refresh to try again.</td></tr>
+              ) : jobs.length === 0 ? (
+                <tr><td className="px-3 py-6 text-xs text-slate-500" colSpan={6}>You have not submitted any jobs yet.</td></tr>
+              ) : jobs.map((job) => <JobRow key={job.id} job={job} />)
           }
         </tbody>
       </table>

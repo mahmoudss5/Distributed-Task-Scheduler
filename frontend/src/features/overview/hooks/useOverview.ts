@@ -1,24 +1,8 @@
-import { useQuery } from '@tanstack/react-query';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import axiosInstance from '../../../shared/api/axiosInstance';
-import type { Job, Worker, SystemStats } from '../../../shared/types';
+import type { Job, JobQueueCounts, Worker, SystemStats } from '../../../shared/types';
 
-// --- Mock data for development (replace with real API) ---
-const mockStats: SystemStats = { completed: 25304, running: 0, pending: 184, failed: 23 };
-const mockWorkers: Worker[] = [
-  { id: '1', host: 'a-worker-#1', status: 'active', lastHeartbeat: new Date().toISOString(), jobsProcessed: 8378, throughput: '7%' },
-  { id: '2', host: 'a-worker-#2', status: 'active', lastHeartbeat: new Date().toISOString(), jobsProcessed: 7770, throughput: '1%' },
-  { id: '3', host: 'a-worker-#3', status: 'active', lastHeartbeat: new Date().toISOString(), jobsProcessed: 9156, throughput: '' },
-  { id: '4', host: 'a-worker-#4', status: 'dead',   lastHeartbeat: new Date().toISOString(), jobsProcessed: 1204, throughput: '' },
-];
-const mockJobs: Job[] = [
-  { id: 'ba4Tbnt', type: 'Email',   priority: 'HIGH',   priorityLevel: 'High',   status: 'PENDING',    executeAt: '', workerId: '-',         createdAt: '', updatedAt: '', retryCount: 0 },
-  { id: 'e7f4bfe', type: 'Report',  priority: 'MEDIUM', priorityLevel: 'Normal', status: 'COMPLETED',  executeAt: '', workerId: 'worker-#3', createdAt: '', updatedAt: '', retryCount: 0, executionTime: '3.2 s' },
-  { id: '7bb807',  type: 'Webhook', priority: 'LOW',    priorityLevel: 'Low',    status: 'COMPLETED',  executeAt: '', workerId: 'worker-#2', createdAt: '', updatedAt: '', retryCount: 0, executionTime: '348 ms' },
-  { id: 'e413bf0', type: 'Email',   priority: 'HIGH',   priorityLevel: 'High',   status: 'COMPLETED', executeAt: '', workerId: 'worker-#1', createdAt: '', updatedAt: '', retryCount: 0, executionTime: '100 ms' },
-  { id: '9b4c7c5', type: 'Report',  priority: 'HIGH',   priorityLevel: 'High',   status: 'COMPLETED',  executeAt: '', workerId: 'worker-#1', createdAt: '', updatedAt: '', retryCount: 0, executionTime: '3.1 s' },
-  { id: '2f8a3d1', type: 'Webhook', priority: 'MEDIUM', priorityLevel: 'Normal', status: 'COMPLETED',  executeAt: '', workerId: 'worker-#2', createdAt: '', updatedAt: '', retryCount: 0, executionTime: '100 ms' },
-];
+const LIVE_REFRESH_INTERVAL = 5_000;
 
 export const useOverview = () => {
   const queryClient = useQueryClient();
@@ -26,42 +10,46 @@ export const useOverview = () => {
   const statsQuery = useQuery<SystemStats>({
     queryKey: ['stats'],
     queryFn: async () => {
-      try {
-        const res = await axiosInstance.get<SystemStats>('/stats');
-        return res.data;
-      } catch {
-        return mockStats; // Fallback to mock during dev
-      }
+      const res = await axiosInstance.get<SystemStats>('/stats');
+      return res.data;
     },
-    staleTime: 30_000,
-    refetchInterval: 30_000,
+    staleTime: 0,
+    refetchInterval: LIVE_REFRESH_INTERVAL,
+    refetchIntervalInBackground: true,
   });
 
   const workersQuery = useQuery<Worker[]>({
     queryKey: ['workers'],
     queryFn: async () => {
-      try {
-        const res = await axiosInstance.get<Worker[]>('/workers');
-        return res.data;
-      } catch {
-        return mockWorkers;
-      }
+      const res = await axiosInstance.get<Worker[]>('/workers');
+      return res.data;
     },
-    staleTime: 15_000,
+    staleTime: 0,
+    refetchInterval: LIVE_REFRESH_INTERVAL,
+    refetchIntervalInBackground: true,
   });
 
   const jobsQuery = useQuery<Job[]>({
     queryKey: ['jobs'],
     queryFn: async () => {
-      try {
-        const res = await axiosInstance.get<{ data: Job[], meta: any }>('/jobs/my?page=1&limit=10');
-        return res.data.data;
-      } catch {
-        return mockJobs;
-      }
+      const res = await axiosInstance.get<{ data: Job[] }>('/jobs/my?page=1&limit=10');
+      return res.data.data;
     },
     staleTime: 0,
+    refetchInterval: LIVE_REFRESH_INTERVAL,
+    refetchIntervalInBackground: true,
   });
 
-  return { statsQuery, workersQuery, jobsQuery, queryClient };
+  const queueDepthQuery = useQuery<JobQueueCounts>({
+    queryKey: ['queue-depth'],
+    queryFn: async () => {
+      const res = await axiosInstance.get<JobQueueCounts>('/jobs/queue-counts');
+      return res.data;
+    },
+    staleTime: 0,
+    refetchInterval: LIVE_REFRESH_INTERVAL,
+    refetchIntervalInBackground: true,
+  });
+
+  return { statsQuery, workersQuery, jobsQuery, queueDepthQuery, queryClient };
 };

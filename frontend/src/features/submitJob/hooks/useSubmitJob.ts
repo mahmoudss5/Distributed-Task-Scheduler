@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import axiosInstance from '../../../shared/api/axiosInstance';
-import type { JobFormData } from '../../../shared/types';
+import type { JobCreationResponse, JobFormData } from '../../../shared/types';
 
 const DEFAULT_PAYLOAD = JSON.stringify({
   to: 'engineer@example.com',
@@ -39,7 +39,7 @@ export const useSubmitJob = () => {
         : data.schedule === 'recurring'
           ? { cron: '*/5 * * * *' }
           : {};
-      const res = await axiosInstance.post('/jobs/create', {
+      const res = await axiosInstance.post<JobCreationResponse>('/jobs/create', {
         type: data.type,
         priorityLevel: data.priority,
         ...schedule,
@@ -50,6 +50,7 @@ export const useSubmitJob = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['jobs'] });
       queryClient.invalidateQueries({ queryKey: ['stats'] });
+      queryClient.invalidateQueries({ queryKey: ['queue-depth'] });
     },
   });
 

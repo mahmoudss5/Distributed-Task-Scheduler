@@ -50,7 +50,7 @@ const PayloadEditor: React.FC<PayloadEditorProps> = ({ payload, error, onChange,
     </div>
 
     <p className="text-xs text-slate-500 mt-1">
-      Payload must be a valid JSON object. This demo does not send emails or call external services.
+      Payload must be a valid JSON object and is sent to the selected backend job handler.
     </p>
   </div>
 );

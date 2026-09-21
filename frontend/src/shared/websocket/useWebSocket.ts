@@ -7,12 +7,14 @@ const WS_URL = import.meta.env.VITE_WS_URL || (import.meta.env.DEV
   ? 'ws://localhost:3000'
   : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws`);
 
-export const useWebSocket = () => {
+export const useWebSocket = (enabled: boolean) => {
   const queryClient = useQueryClient();
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stoppedRef = useRef(false);
 
   const connect = useCallback(() => {
+    if (stoppedRef.current) return;
     try {
       const ws = new WebSocket(WS_URL);
       wsRef.current = ws;
@@ -25,9 +27,12 @@ export const useWebSocket = () => {
           switch (msg.event) {
             case 'stats-update':
               queryClient.invalidateQueries({ queryKey: ['stats'] });
+              queryClient.invalidateQueries({ queryKey: ['queue-depth'] });
               break;
             case 'job-status-changed':
               queryClient.invalidateQueries({ queryKey: ['jobs'] });
+              queryClient.invalidateQueries({ queryKey: ['stats'] });
+              queryClient.invalidateQueries({ queryKey: ['queue-depth'] });
               break;
             case 'worker-heartbeat':
               queryClient.invalidateQueries({ queryKey: ['workers'] });
@@ -47,6 +52,7 @@ export const useWebSocket = () => {
       };
 
       ws.onclose = () => {
+        if (stoppedRef.current) return;
         console.log('[WS] Disconnected, reconnecting in 5s...');
         reconnectTimerRef.current = setTimeout(connect, 5000);
       };
@@ -58,10 +64,13 @@ export const useWebSocket = () => {
   }, [queryClient]);
 
   useEffect(() => {
+    if (!enabled) return;
+    stoppedRef.current = false;
     connect();
     return () => {
+      stoppedRef.current = true;
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
       wsRef.current?.close();
     };
-  }, [connect]);
+  }, [connect, enabled]);
 };

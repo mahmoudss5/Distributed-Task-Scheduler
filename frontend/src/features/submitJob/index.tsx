@@ -57,7 +57,7 @@ const SubmitJobPage: React.FC = () => {
             {mutation.isSuccess && (
               <div className="flex items-center gap-1.5 text-xs text-emerald-400">
                 <CheckCircle2 size={13} />
-                Job submitted successfully! It appears in the overview.
+                Job {mutation.data.id.slice(0, 8)} submitted successfully! It appears in the overview.
               </div>
             )}
             {mutation.isError && (

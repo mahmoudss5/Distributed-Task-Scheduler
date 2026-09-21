@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, PlusCircle, Zap, FileText, Loader2, LogOut } from 'lucide-react';
+import { LayoutDashboard, PlusCircle, Zap, FileText, Loader2, LogOut, AlertCircle } from 'lucide-react';
 import ThemeToggle from '../ThemeToggle/ThemeToggle';
 import { reportApi } from '../../api/reportApi';
 import { useAuth } from '../../../context/AuthContext';
 
 const Sidebar: React.FC = () => {
-  const { logout } = useAuth();
+  const { isAuthenticated, logout } = useAuth();
   const [reportStatus, setReportStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
 
   const navClass = ({ isActive }: { isActive: boolean }) =>
@@ -62,6 +62,14 @@ const Sidebar: React.FC = () => {
           <PlusCircle size={16} />
           Submit Job
         </NavLink>
+        <NavLink to="/failures" className={navClass}>
+          <AlertCircle size={16} />
+          Job Failures
+        </NavLink>
+        <NavLink to="/reports" className={navClass}>
+          <FileText size={16} />
+          Reports
+        </NavLink>
 
         <div className="mt-4">
           <p className="text-xs text-slate-500 uppercase tracking-wider px-3 mb-2">Actions</p>
@@ -95,8 +103,8 @@ const Sidebar: React.FC = () => {
       {/* Footer */}
       <div className="px-4 py-3 border-t border-slate-700/50 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="text-xs text-slate-400">Connected</span>
+          <div className={`w-2 h-2 rounded-full ${isAuthenticated ? 'bg-emerald-400' : 'bg-slate-500'}`} />
+          <span className="text-xs text-slate-400">{isAuthenticated ? 'Signed in' : 'Signed out'}</span>
         </div>
         <div className="flex items-center gap-2">
           <ThemeToggle />

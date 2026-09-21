@@ -6,9 +6,10 @@ import WorkerCard from './WorkerCard';
 interface WorkerNodesProps {
   workers: Worker[];
   isLoading: boolean;
+  isError: boolean;
 }
 
-const WorkerNodes: React.FC<WorkerNodesProps> = ({ workers, isLoading }) => {
+const WorkerNodes: React.FC<WorkerNodesProps> = ({ workers, isLoading, isError }) => {
   const activeCount = workers.filter((w) => w.status === 'active').length;
   const deadCount   = workers.filter((w) => w.status === 'dead').length;
 
@@ -31,6 +32,10 @@ const WorkerNodes: React.FC<WorkerNodesProps> = ({ workers, isLoading }) => {
             <div key={i} className="h-20 rounded-lg bg-slate-700/30 animate-pulse" />
           ))}
         </div>
+      ) : isError ? (
+        <p className="text-xs text-red-400">Worker status is temporarily unavailable.</p>
+      ) : workers.length === 0 ? (
+        <p className="text-xs text-slate-500">No worker records are available yet.</p>
       ) : (
         <div className="grid grid-cols-2 gap-2">
           {workers.map((worker) => (
@@ -39,15 +44,9 @@ const WorkerNodes: React.FC<WorkerNodesProps> = ({ workers, isLoading }) => {
         </div>
       )}
 
-      <div className="mt-3 pt-3 border-t border-slate-700/50 flex justify-between">
-        <button className="text-xs text-violet-400 hover:text-violet-300 transition-colors">
-          Configure autoscaling
-        </button>
-        <div className="flex gap-2 text-xs text-slate-500">
-          <span>Scaled</span>
-          <span className="text-slate-400">• Load more</span>
-        </div>
-      </div>
+      <p className="mt-3 pt-3 border-t border-slate-700/50 text-xs text-slate-500">
+        Worker availability is based on each worker's latest heartbeat.
+      </p>
     </div>
   );
 };

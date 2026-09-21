@@ -13,9 +13,6 @@ const JobSummary: React.FC<JobSummaryProps> = ({ form }) => (
         <FileText size={13} className="text-slate-400" />
         <span className="text-sm font-semibold text-slate-200">Job summary</span>
       </div>
-      <button className="text-xs bg-slate-700/60 hover:bg-slate-600/60 text-slate-300 px-2 py-1 rounded transition-colors">
-        PREVIEW
-      </button>
     </div>
 
     <div className="space-y-3 mb-4">
@@ -43,10 +40,10 @@ const JobSummary: React.FC<JobSummaryProps> = ({ form }) => (
 
     <div className="p-3 bg-emerald-500/5 border border-emerald-500/10 rounded-lg">
       <div className="flex items-start gap-2">
-        <div className="w-2 h-2 rounded-full bg-emerald-400 mt-1 flex-shrink-0" />
+        <div className="w-2 h-2 rounded-full bg-slate-400 mt-1 flex-shrink-0" />
         <div>
-          <p className="text-xs font-medium text-emerald-400 mb-0.5">Development environment</p>
-          <p className="text-xs text-slate-500">Jobs run in this interactive demo only. No production services are connected.</p>
+          <p className="text-xs font-medium text-slate-300 mb-0.5">Queue submission</p>
+          <p className="text-xs text-slate-500">Submitting this form creates a job in your queue.</p>
         </div>
       </div>
     </div>

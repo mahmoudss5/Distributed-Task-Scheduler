@@ -1,5 +1,5 @@
 import React from 'react';
-import { Activity, Wifi, WifiOff } from 'lucide-react';
+import { Clock3, Wifi, WifiOff } from 'lucide-react';
 import type { Worker } from '../../../../shared/types';
 
 interface WorkerCardProps {
@@ -8,6 +8,11 @@ interface WorkerCardProps {
 
 const WorkerCard: React.FC<WorkerCardProps> = ({ worker }) => {
   const isActive = worker.status === 'active';
+  const lastHeartbeat = new Intl.DateTimeFormat(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(new Date(worker.lastHeartbeat));
 
   return (
     <div className={`p-3 rounded-lg border transition-all duration-200 ${
@@ -32,16 +37,14 @@ const WorkerCard: React.FC<WorkerCardProps> = ({ worker }) => {
       <div className="flex items-end justify-between">
         <div>
           <p className="text-lg font-bold text-white tabular-nums">
-            {worker.jobsProcessed?.toLocaleString() ?? '—'}
+            {worker.jobsProcessed.toLocaleString()}
           </p>
-          <p className="text-xs text-slate-500">Jobs processed</p>
+          <p className="text-xs text-slate-500">Your jobs completed</p>
         </div>
-        {worker.throughput && (
-          <div className="flex items-center gap-1 text-xs text-slate-400">
-            <Activity size={10} className="text-blue-400" />
-            <span>{worker.throughput}</span>
-          </div>
-        )}
+        <div className="flex items-center gap-1 text-xs text-slate-400">
+          <Clock3 size={10} className="text-blue-400" />
+          <span>{lastHeartbeat}</span>
+        </div>
       </div>
       {!isActive && (
         <p className="text-xs text-red-400 mt-1">No heartbeat</p>
