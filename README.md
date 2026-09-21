@@ -1,251 +1,285 @@
-# TaskFlow — Distributed Task Scheduler
+# TaskFlow — Distributed Task Platform
 
-A production-ready distributed task scheduling platform built with **NestJS**, **React**, **Kafka**, **MySQL**, and **Redis**. TaskFlow allows you to submit, schedule, and monitor background jobs across multiple worker nodes in real-time.
+TaskFlow is a distributed background-job platform built with NestJS, React, Kafka, MySQL, and Redis. It provides authenticated job submission, scheduled execution, worker monitoring, failure tracking, and report generation through a web dashboard and REST API.
 
----
+## Current status
 
-## ✨ Features
+The repository currently includes:
 
-- 🔐 **Authentication & Security** — JWT-based authentication, robust role-based access control (Admin/User), and fully protected API endpoints via Guards. Multi-tenancy support ensures users can only interact with their own jobs.
-- 🔑 **Password Recovery** — Secure OTP-based password reset flow utilizing Nodemailer and Redis for short-lived token storage.
-- 📋 **Job Submission & Validation** — Submit background jobs via REST API or the web UI. All incoming payloads are strictly validated using `class-validator` and `class-transformer`.
-- 🔁 **Scheduler** — Cron-based poller that publishes `PENDING` jobs to Kafka every 20 seconds.
-- ⚡ **Worker Nodes** — Kafka consumers that pick up and execute jobs, featuring heartbeat monitoring and simulated heavy task execution.
-- 📊 **Real-time Dashboard** — Live overview of system stats, worker nodes, queue depth, and recent jobs.
-- 🛡️ **Role-Based Audit Logging** — Track critical system events (scheduler pauses, dead workers) using a dedicated audit log.
-- 🛑 **Graceful Shutdown & Backpressure** — Workers wait for active jobs to complete on termination. Workers also feature built-in Kafka backpressure, gracefully pausing consumption when overloaded instead of dropping messages.
-- 🕒 **Advanced Scheduling & Retries** — Support for delayed execution (`runAt`), **cron-based recurring jobs** (`cron-parser`), auto-calculated priority queues (HIGH/MEDIUM/LOW), and automatic exponential backoff on failure.
-- 🎨 **Dark / Light Theme** — Toggle between dark and light mode, persisted to `localStorage`.
-- 🐳 **Fully Dockerized** — All services orchestrated with a single `docker-compose up`.
+- A React 19 + Vite dashboard with protected routes for overview, job submission, job failures, and reports.
+- JWT authentication with registration, login, OTP-based password recovery, role checks, request validation, and Redis-backed rate limiting.
+- Two supported job types: `sendEmail` and `generateReport`.
+- Immediate, delayed, and recurring jobs. Recurring jobs use cron expressions.
+- Kafka-based job distribution with `job-ready` and `job-dlq` topics.
+- Redis leader election so only one backend instance schedules jobs at a time.
+- Worker heartbeats, worker status monitoring, concurrency backpressure, graceful shutdown, retries with exponential delay, and dead-letter publishing.
+- Real-time dashboard updates over WebSockets.
+- Paginated job-failure history and generated-report downloads.
+- Admin-only user, audit-log, all-jobs, all-reports, and email operations.
+- Docker Compose infrastructure for MySQL, Redis, ZooKeeper, Kafka, Kafka topic initialization, backend instances, and the Nginx frontend gateway.
+- Swagger API documentation and a health endpoint that checks MySQL, Kafka, Redis, and worker availability.
 
----
+## Architecture
 
-## 🏗️ Architecture
-
-```
-┌─────────────┐     REST/WS     ┌──────────────────────┐
-│   Frontend  │ ◄─────────────► │   Backend (NestJS)   │
-│  React+Vite │                 │                      │
-└─────────────┘                 │  SchedulerService    │
-                                │  (polls every 20s)   │
-                                └───────┬──────────────┘
-                                        │ Publishes to Kafka
-                                ┌───────▼──────────────┐
-                                │   Kafka (job-ready)  │
-                                └───────┬──────────────┘
-                                        │ Consumed by
-                                ┌───────▼──────────────┐
-                                │   WorkerService      │
-                                │  (Kafka Consumer)    │
-                                └──────────────────────┘
-                                        │
-                     ┌──────────────────┼──────────────┐
-                     ▼                  ▼              ▼
-                  MySQL              Redis          Kafka
-               (Job Store)       (Cache/Sessions)  (Broker)
+```text
+Browser
+  │  HTTP / WebSocket
+  ▼
+Nginx + React frontend
+  │
+  ▼
+NestJS backend instances
+  ├── REST API, authentication, dashboard queries
+  ├── Scheduler (Redis leader election)
+  ├── Kafka producer / consumer
+  └── WebSocket event gateway
+       │
+       ├── MySQL       jobs, users, workers, failures, reports, audit logs
+       ├── Redis       OTPs, rate limits, locks, leases, heartbeats
+       └── Kafka       job-ready and job-dlq topics
 ```
 
----
+The scheduler checks pending jobs every 20 seconds and publishes eligible jobs to Kafka. It also increases waiting-job priority every 10 seconds and detects dead workers every 30 seconds. Workers consume jobs from the shared Kafka consumer group, process up to five jobs concurrently, and update the dashboard through WebSocket events.
 
-## 🗂️ Project Structure
+## Features
 
-```
+### Dashboard
+
+- Completed, running, pending, and failed job counts.
+- Queue depth by priority (`HIGH`, `MEDIUM`, `LOW`).
+- Current worker nodes, heartbeat status, and jobs processed.
+- Recent jobs with automatic refresh after job and worker events.
+- Dark/light theme persisted in the browser.
+
+### Job processing
+
+- Validated JSON payloads.
+- Priority levels: `LOW`, `MEDIUM`, and `HIGH`.
+- Delayed execution with `executeAt`.
+- Recurring execution with `cron`.
+- Automatic retries and exponential retry delays.
+- Cancellation and deletion for the owning user.
+- Durable failure records and Kafka dead-letter messages after permanent failure.
+
+### Reports and failures
+
+- Queue a report-generation job from the Reports page.
+- Poll report status and download completed reports.
+- Browse paginated failure records, including attempt number, worker, error, and DLQ status.
+
+## Repository structure
+
+```text
 .
-├── backend/                   # NestJS API & Workers
+├── backend/
 │   ├── src/
-│   │   ├── auth/              # JWT Auth, Guards, and Decorators
-│   │   ├── users/             # User entity, password hashing, user management
-│   │   ├── email/             # Nodemailer and OTP logic
-│   │   ├── jobs/              # Job entity, DTOs, service, controller
-│   │   ├── worker/            # Worker entity, service, consumer (backpressure enabled)
-│   │   ├── scheduler/         # Cron scheduler service
-│   │   ├── kafka/             # Kafka module
-│   │   ├── redis/             # Redis module
-│   │   └── app.module.ts      # Root module
-│   ├── Dockerfile
-│   └── .env
-│
-├── frontend/                  # React + Vite + TypeScript
+│   │   ├── auth/          # JWT login and guards
+│   │   ├── users/         # Registration, password recovery, admin users
+│   │   ├── jobs/          # Job entities, APIs, execution, failures
+│   │   ├── worker/        # Kafka consumer and worker lifecycle
+│   │   ├── scheduler/     # Leader election and job scheduling
+│   │   ├── report/        # Report generation and downloads
+│   │   ├── audit-log/     # Administrative event history
+│   │   ├── email/         # Email execution and password-reset email
+│   │   ├── health/        # Dependency health checks
+│   │   ├── system/        # Dashboard stats and worker APIs
+│   │   └── redis/         # Redis client and distributed primitives
+│   ├── .env.example
+│   └── Dockerfile
+├── frontend/
 │   ├── src/
-│   │   ├── context/           # ThemeContext, AuthContext
-│   │   ├── shared/            # Axios Interceptors, Protected Routes
-│   │   └── features/
-│   │       ├── auth/          # Login, Register, Forgot Password
-│   │       ├── overview/      # System overview dashboard
-│   │       └── submitJob/     # Job submission form
+│   │   ├── features/auth/
+│   │   ├── features/overview/
+│   │   ├── features/submitJob/
+│   │   ├── features/jobFailures/
+│   │   └── features/reports/
 │   ├── Dockerfile
 │   └── nginx.conf
-│
-└── docker-compose.yml         # Full infrastructure orchestration
+└── docker-compose.yml
 ```
 
----
+## Requirements
 
-## 🚀 Getting Started
+- Docker and Docker Compose for the full stack.
+- Node.js 22+ for local development. The backend image uses Node 22 and the frontend build image uses Node 24.
 
-### Prerequisites
+## Configuration
 
-- [Docker](https://docs.docker.com/get-docker/) & [Docker Compose](https://docs.docker.com/compose/)
-- [Node.js v24+](https://nodejs.org/) (for local development only)
-
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/mahmoudss5/Distributed-Task-Scheduler.git
-cd Distributed-Task-Scheduler
-```
-
-### 2. Configure environment variables
-
-Copy the example env and fill in your values:
+Create the backend environment file before starting Compose:
 
 ```bash
 cp backend/.env.example backend/.env
 ```
 
-| Variable              | Description                    | Default              |
-|-----------------------|--------------------------------|----------------------|
-| `MYSQL_ROOT_PASSWORD` | MySQL root password            | —                    |
-| `MYSQL_DATABASE`      | Database name                  | `distributed-Task-Db` |
-| `MYSQL_USER`          | Database user                  | `myuser`             |
-| `MYSQL_PASSWORD`      | Database password              | —                    |
-| `DB_HOST`             | DB host (set to `localhost` for dev) | `localhost`    |
-| `DB_PORT`             | DB port                        | `3307`               |
-| `JWT_SECRET`          | Secret key for signing JWTs    | `super-secret`       |
+Update the secrets and service credentials in `backend/.env`. The important settings are:
 
-### 3. Run with Docker (Recommended)
+| Variable | Purpose |
+| --- | --- |
+| `JWT_SECRET` | JWT signing secret |
+| `HEALTH_TOKEN` | Token required by `GET /health` |
+| `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` | MySQL connection |
+| `REDIS_HOST`, `REDIS_PORT` | Redis connection |
+| `KAFKA_BROKER`, `KAFKA_GROUP_ID`, `KAFKA_DLQ_TOPIC` | Kafka connection and consumer settings |
+| `EMAIL_USER`, `EMAIL_APP_PASSWORD` | SMTP credentials for email jobs and password recovery |
+| `REPORTS_DIR` | Directory where generated reports are stored |
+
+Do not commit `backend/.env` or any real credentials.
+
+## Run with Docker Compose
 
 ```bash
 docker compose up --build
 ```
 
-This starts the infrastructure, Kafka topic initializer, four backend/worker replicas, and the Nginx frontend gateway:
-1. `mysql` → waits until healthy
-2. `redis` → waits until healthy
-3. `zookeeper` → waits until healthy
-4. `kafka` → waits until Zookeeper is ready
-5. `kafka-init` → creates `job-ready` and `job-dlq` with four partitions
-6. `backend` → runs four replicas in the same Kafka consumer group
-7. `frontend` → Nginx serves the React app and load-balances HTTP/WebSocket traffic to the backend replicas
+The default Compose command starts one backend container. To run four backend instances locally, scale the service explicitly:
 
-| Service  | URL                                           |
-|----------|-----------------------------------------------|
-| Frontend | http://localhost                              |
-| Backend/API | available through Nginx at `http://localhost/api`     |
-| MySQL    | `localhost:3307`                              |
-| Redis    | `localhost:6379`                              |
-| Kafka    | `localhost:29092` (external dev access)       |
+```bash
+docker compose up --build --scale backend=4
+```
 
-### 4. Run Locally (Development)
+Compose creates and initializes the `job-ready` and `job-dlq` Kafka topics with four partitions. The backend containers share the `taskflow-workers` consumer group, while Redis coordinates scheduler leadership and distributed locks.
 
-**Backend:**
+| Service | Address |
+| --- | --- |
+| Frontend | http://localhost |
+| Backend through Nginx | http://localhost/api |
+| Backend direct | http://localhost:3000 |
+| MySQL | localhost:3307 |
+| Redis | localhost:6379 |
+| Kafka external listener | localhost:29092 |
+
+The frontend proxies `/api/*` to the backend and `/ws` to the WebSocket gateway. Generated reports are stored in the backend container's `/app/reports` volume.
+
+## Run locally without the frontend container
+
+Start the infrastructure dependencies with Docker, or provide equivalent local services. Then create `backend/.env` and run the applications separately:
+
 ```bash
 cd backend
 npm install
 npm run start:dev
 ```
 
-**Frontend:**
+In another terminal:
+
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-Frontend available at **http://localhost:5173**
 
-### Worker scaling
+The Vite frontend runs at http://localhost:5173 and defaults to the backend at `http://localhost:3000`. Optional frontend overrides are `VITE_API_URL` and `VITE_WS_URL`.
 
-Workers are Kafka consumers, so Kafka distributes jobs across the four backend replicas using the shared consumer group. Nginx balances the HTTP API and WebSocket connections; it does not balance Kafka messages.
-
-For regular Docker Compose, scale the backend explicitly:
+Useful checks:
 
 ```bash
-docker compose up --build --scale backend=4
+cd backend && npm test
+cd backend && npm run test:e2e
+cd frontend && npm run build
+cd frontend && npm run lint
 ```
 
-For Docker Swarm, the existing `deploy.replicas: 4` setting is used by:
+## API overview
+
+All protected endpoints require `Authorization: Bearer <JWT>`. User-facing job and report endpoints are scoped to the authenticated user. Admin-only endpoints additionally require the admin role.
+
+### Authentication and users
+
+| Method | Endpoint | Access | Description |
+| --- | --- | --- | --- |
+| `POST` | `/auth/login` | Public | Authenticate and return a JWT |
+| `POST` | `/users` | Public | Register a user |
+| `POST` | `/users/forgot-password` | Public | Send a password-reset OTP |
+| `POST` | `/users/reset-password` | Public | Verify the OTP and set a new password |
+| `GET` | `/users` | Admin | List users |
+
+### Jobs
+
+| Method | Endpoint | Access | Description |
+| --- | --- | --- | --- |
+| `POST` | `/jobs/create` | Authenticated | Submit a job |
+| `GET` | `/jobs/my` | Authenticated | List the current user's jobs |
+| `GET` | `/jobs/by-id/:id` | Authenticated | Get one owned job |
+| `GET` | `/jobs/pending` | Authenticated | List pending jobs |
+| `GET` | `/jobs/completed` | Authenticated | List completed jobs |
+| `GET` | `/jobs/failed` | Authenticated | List permanently failed jobs |
+| `GET` | `/jobs/failures` | Authenticated | List detailed failure records |
+| `GET` | `/jobs/failures/:jobId` | Authenticated | List failures for one job |
+| `GET` | `/jobs/queue-counts` | Authenticated | Get queue counts by priority |
+| `POST` | `/jobs/cancel/:id` | Authenticated | Cancel an owned job |
+| `DELETE` | `/jobs/delete/:id` | Authenticated | Delete an owned job |
+| `GET` | `/jobs/all` | Admin | List jobs across all users |
+
+`POST /jobs/create` accepts `type`, `jobPayload`, and optional `priorityLevel`, `executeAt`, and `cron` fields. Supported types are `sendEmail` and `generateReport`.
+
+Example:
 
 ```bash
-docker stack deploy -c docker-compose.yml taskflow
-```
-
----
-
-## 📡 API Endpoints
-
-All endpoints (except Authentication endpoints) require a `Bearer <token>` in the `Authorization` header.
-
-| Method | Endpoint                    | Description                                  |
-|--------|-----------------------------|----------------------------------------------|
-| `POST` | `/auth/login`               | Authenticate and receive JWT                 |
-| `POST` | `/auth/register`            | Register a new user account                  |
-| `POST` | `/users/forgot-password`    | Send an OTP to user's email                  |
-| `POST` | `/users/reset-password`     | Verify OTP and set a new password            |
-| `POST` | `/jobs-controller/create`   | Submit a new job (supports `cron` field)     |
-| `GET`  | `/jobs-controller/all`      | Get all pending jobs for the current user    |
-| `GET`  | `/jobs-controller/completedCount` | Get completed jobs count for the user |
-
-### Example: Submit a Job
-
-```bash
-curl -X POST http://localhost:3000/jobs-controller/create \
+curl -X POST http://localhost:3000/jobs/create \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -d '{
-    "type": "Data Processing",
+    "type": "sendEmail",
     "priorityLevel": "HIGH",
-    "cron": "*/5 * * * *",
     "jobPayload": {
-      "datasetId": "12345"
+      "to": "engineer@example.com",
+      "subject": "TaskFlow job",
+      "body": "The job completed successfully."
     }
   }'
 ```
 
----
+### Reports, system, and operations
 
-## 🔄 Job Lifecycle
+| Method | Endpoint | Access | Description |
+| --- | --- | --- | --- |
+| `POST` | `/reports/generate` | Authenticated | Queue a report-generation job |
+| `GET` | `/reports` | Authenticated | List the current user's reports |
+| `GET` | `/reports/status/:jobId` | Authenticated | Check report job status |
+| `GET` | `/reports/download/:id` | Authenticated | Download an owned report |
+| `GET` | `/reports/all` | Admin | List all reports |
+| `GET` | `/stats` | Authenticated | Get dashboard job counts |
+| `GET` | `/workers` | Authenticated | Get worker status and throughput |
+| `GET` | `/audit-logs` | Admin | List audit logs |
+| `GET` | `/audit-logs/userLogs/:id` | Admin | List logs for a user |
+| `POST` | `/email/send-email` | Admin | Send an email directly |
+| `GET` | `/health` | Health token | Check MySQL, Kafka, Redis, and workers |
 
+Swagger is available at `http://localhost:3000/api/docs` when running the backend directly.
+
+## Job lifecycle
+
+```text
+Create job
+  │
+  ▼
+MySQL: PENDING
+  │  scheduler interval + runAt/executeAt check
+  ▼
+Kafka: job-ready
+  │
+  ▼
+Worker claims and processes the job
+  ├── success      → COMPLETED
+  │                  recurring jobs create the next PENDING job
+  ├── retryable    → PENDING with exponential delay
+  └── permanent    → FAILED + job-failure record + job-dlq message
 ```
-Submit via API (Validated & Tied to User ID)
-      │
-      ▼
-Job saved to MySQL (status: PENDING)
-      │
-      ▼  (every 20 seconds)
-SchedulerService polls PENDING jobs
-      │
-      ▼
-Publishes to Kafka topic: job-ready
-(status updated to: PROCESSING)
-      │
-      ▼
-WorkerService consumes the message (with Backpressure)
-      │
-      ├─ Success → status: COMPLETED
-      │          └─ If 'cron' is set → spawn NEW job (status: PENDING)
-      │
-      └─ Failure → status: FAILED (retryCount++)
-                 └─ If retryable, runAt = exponential backoff delay
-```
 
----
+## Technology stack
 
-## 🛠️ Tech Stack
+| Area | Technology |
+| --- | --- |
+| Frontend | React 19, Vite, TypeScript, Tailwind CSS, React Router, TanStack Query |
+| Backend | NestJS 12, TypeScript, TypeORM, class-validator |
+| Authentication | JWT, Passport, bcrypt |
+| Database | MySQL 8 |
+| Messaging | Apache Kafka, KafkaJS, ZooKeeper |
+| Cache and coordination | Redis 6.2, ioredis |
+| Reports | Puppeteer |
+| Email | Nodemailer |
+| Runtime and gateway | Docker, Docker Compose, Nginx |
 
-| Layer       | Technology                                  |
-|-------------|---------------------------------------------|
-| **Frontend** | React 19, Vite, TypeScript, Tailwind CSS v3 |
-| **State**    | Context API, React Router v6                |
-| **Backend**  | NestJS 12, TypeScript, class-validator      |
-| **Auth**     | JWT, Passport, bcrypt                       |
-| **Database** | MySQL 8.0 via TypeORM                        |
-| **Broker**   | Apache Kafka (via KafkaJS)                   |
-| **Cache**    | Redis 6.2                                    |
-| **Icons**    | lucide-react                                 |
-| **Infra**    | Docker, Docker Compose, Nginx                |
+## License
 
----
-
-## 📝 License
-
-This project is licensed under the **UNLICENSED** license.
+This project is currently licensed as **UNLICENSED**.
