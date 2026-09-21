@@ -15,7 +15,7 @@ export class KafkaLagService implements OnModuleInit, OnModuleDestroy {
       clientId: 'admin-lag-monitor',
       brokers: [this.config.get<string>('KAFKA_BROKER', 'localhost:9092')],
     });
-    
+
     this.admin = kafka.admin();
     try {
       await this.admin.connect();
@@ -35,31 +35,42 @@ export class KafkaLagService implements OnModuleInit, OnModuleDestroy {
     try {
       if (!this.admin) return 0;
       const topicOffsets = await this.admin.fetchTopicOffsets(topic);
-      const groupOffsets = await this.admin.fetchOffsets({ groupId, topics: [topic] });
+      const groupOffsets = await this.admin.fetchOffsets({
+        groupId,
+        topics: [topic],
+      });
 
       let totalLag = 0;
 
       for (const topicOffset of topicOffsets) {
         // Find corresponding group offset for this partition
-        const groupTopic = groupOffsets.find(t => t.topic === topic);
+        const groupTopic = groupOffsets.find((t) => t.topic === topic);
         if (!groupTopic) continue;
 
-        const groupPartition = groupTopic.partitions.find(p => p.partition === topicOffset.partition);
-        
+        const groupPartition = groupTopic.partitions.find(
+          (p) => p.partition === topicOffset.partition,
+        );
+
         const highWatermark = parseInt(topicOffset.high, 10);
-        
+
         // If the consumer hasn't committed anything yet, the offset might be '-1'
-        const consumerOffset = groupPartition && groupPartition.offset !== '-1' 
-            ? parseInt(groupPartition.offset, 10) 
+        const consumerOffset =
+          groupPartition && groupPartition.offset !== '-1'
+            ? parseInt(groupPartition.offset, 10)
             : 0;
-        
+
         totalLag += Math.max(0, highWatermark - consumerOffset);
       }
 
       return totalLag;
     } catch (error) {
-      this.logger.error(`Error fetching consumer lag for topic ${topic}`, error);
+      this.logger.error(
+        `Error fetching consumer lag for topic ${topic}`,
+        error,
+      );
       return 0; // Return 0 to prevent blocking the scheduler in case of errors
     }
   }
+
+
 }

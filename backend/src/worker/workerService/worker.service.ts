@@ -43,12 +43,32 @@ export class WorkerService implements OnApplicationShutdown {
   }
 
   private async registerWorker(): Promise<void> {
-    const worker = new Worker();
-    worker.id = this.workerId;
-    worker.host = os.hostname();
-    worker.status = 'active';
-    worker.lastHeartbeat = new Date();
+    const host = os.hostname();
+    const now = new Date();
     try {
+      // Reuse the worker record for this container when the application is
+      // restarted. Creating a new UUID on every restart leaves historical
+      // rows that the dashboard incorrectly presents as live worker nodes.
+      const existingWorker = await this.workerRepository.findOne({
+        where: { host },
+        order: { lastHeartbeat: 'DESC' },
+      });
+
+      if (existingWorker) {
+        this.workerId = existingWorker.id;
+        await this.workerRepository.update(this.workerId, {
+          status: 'active',
+          lastHeartbeat: now,
+        });
+        return;
+      }
+
+      const worker = this.workerRepository.create({
+        id: this.workerId,
+        host,
+        status: 'active',
+        lastHeartbeat: now,
+      });
       await this.workerRepository.save(worker);
     } catch (err) {
       this.logger.error('Failed to save worker', err);
@@ -109,7 +129,9 @@ export class WorkerService implements OnApplicationShutdown {
       if (!currentJob) return;
 
       await this.processJob(currentJob);
-    } finally {
+
+    }
+    finally {
       this.activeJobs--;
     }
   }
@@ -155,6 +177,10 @@ export class WorkerService implements OnApplicationShutdown {
     if (result.affected === 1 && currentJob.cron) {
       await this.rescheduleCronJob(currentJob);
     }
+    if (result.affected === 1) {
+      this.eventsGateway.broadcastJobStatusChanged();
+      this.eventsGateway.broadcastStatsUpdate();
+    }
   }
 
   private async rescheduleCronJob(currentJob: Job): Promise<void> {
@@ -196,6 +222,8 @@ export class WorkerService implements OnApplicationShutdown {
       );
       if (result.affected !== 1) return;
       await this.publishFailureToDeadLetterQueue(savedFailure);
+      this.eventsGateway.broadcastJobStatusChanged();
+      this.eventsGateway.broadcastStatsUpdate();
       this.eventsGateway.broadcastJobFailed(currentJob.id, this.getErrorMessage(error), currentJob.type);
       this.logger.warn(
         `Job ${currentJob.id} permanently failed after ${savedFailure.attemptNumber} attempt(s).`,
@@ -213,6 +241,9 @@ export class WorkerService implements OnApplicationShutdown {
         { id: currentJob.id, status: JobStatus.PENDING, workerId: currentJob.workerId },
         { workerId: null as any },
       );
+
+      this.eventsGateway.broadcastJobStatusChanged();
+      this.eventsGateway.broadcastStatsUpdate();
 
       this.logger.log(
         `Job ${currentJob.id} will be retried (remaining attempts: ${currentJob.retryCount})`,

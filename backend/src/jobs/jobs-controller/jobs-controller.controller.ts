@@ -22,6 +22,7 @@ import { CreateJobDto } from '../Dtos/create-job.dto';
 import { PaginationQueryDto, PaginatedResponse } from '../../common/dto/pagination.dto';
 import { RateLimit } from '../../common/decorators/rate-limit.decorator';
 import { AllJobsDto } from '../Dtos/allJobs.dto';
+import { JobFailureResponse } from '../Dtos/job-failure-response.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('jobs')
@@ -61,6 +62,26 @@ export class JobsControllerController {
     @CurrentUser() user: any,
   ): Promise<PaginatedResponse<Job>> {
     return await this.jobsService.getFailedJobs(query.page || 1, query.limit || 10, user.id);
+  }
+
+  @Get('/failures')
+  async getJobFailures(
+    @Query() query: PaginationQueryDto,
+    @CurrentUser() user: any,
+  ): Promise<PaginatedResponse<JobFailureResponse>> {
+    return await this.jobsService.getJobFailures(
+      query.page || 1,
+      query.limit || 10,
+      user.id,
+    );
+  }
+
+  @Get('/failures/:jobId')
+  async getJobFailuresByJobId(
+    @Param('jobId') jobId: string,
+    @CurrentUser() user: any,
+  ): Promise<JobFailureResponse[]> {
+    return await this.jobsService.getJobFailuresByJobId(jobId, user.id);
   }
 
   @Get('/completed')
@@ -113,8 +134,9 @@ export class JobsControllerController {
   async cancelJob(@Param('id') id: string, @CurrentUser() user: any): Promise<void> {
     await this.jobsService.cancelJob(id, user.id);
   }
+  @Get('/queue-counts')
   @Get('/allJobsCountDetails')
   async getAllJobsCountDetails(@CurrentUser() user: any): Promise<AllJobsDto> {
-    return await this.jobsService.getAllJobs();
+    return await this.jobsService.getPendingQueueCounts(user.id);
   }
 }

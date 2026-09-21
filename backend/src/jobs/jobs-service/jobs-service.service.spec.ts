@@ -9,6 +9,7 @@ describe('JobsServiceService', () => {
       undefined as never,
       undefined as never,
       undefined as never,
+      undefined as never,
     );
   });
 

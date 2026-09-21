@@ -17,11 +17,18 @@ import { ReportService } from '../../report/service/report.service';
 import { EmailService } from '../../email/service/email.service';
 import { JobType } from '../entites/job.type.enum';
 import { AllJobsDto } from '../Dtos/allJobs.dto';
+import { JobFailure } from '../entites/job-failure.entity';
+import {
+  JobFailureResponse,
+  toJobFailureResponse,
+} from '../Dtos/job-failure-response.dto';
 
 @Injectable()
 export class JobsServiceService {
   constructor(
     @InjectRepository(Job) private readonly jobRepository: Repository<Job>,
+    @InjectRepository(JobFailure)
+    private readonly jobFailureRepository: Repository<JobFailure>,
     private readonly eventsGateway: EventsGateway,
     @Inject(forwardRef(() => ReportService))
     private readonly reportService: ReportService,
@@ -111,6 +118,43 @@ export class JobsServiceService {
     const where: any = { status: JobStatus.FAILED };
     if (userId) where.userId = userId;
     return await this.paginateJobs(where, page, limit);
+  }
+
+  async getJobFailures(
+    page: number,
+    limit: number,
+    userId?: string,
+  ): Promise<PaginatedResponse<JobFailureResponse>> {
+    const where: any = {};
+    if (userId) where.userId = userId;
+
+    const skip = (page - 1) * limit;
+    const [failures, total] = await this.jobFailureRepository.findAndCount({
+      where,
+      take: limit,
+      skip,
+      order: { failedAt: 'DESC' },
+    });
+
+    return {
+      data: failures.map(toJobFailureResponse),
+      meta: { total, page, limit },
+    };
+  }
+
+  async getJobFailuresByJobId(
+    jobId: string,
+    userId?: string,
+  ): Promise<JobFailureResponse[]> {
+    const where: any = { jobId };
+    if (userId) where.userId = userId;
+
+    const failures = await this.jobFailureRepository.find({
+      where,
+      order: { failedAt: 'DESC' },
+    });
+
+    return failures.map(toJobFailureResponse);
   }
 
   async getCountOfFailedJobs(userId?: string): Promise<number> {
@@ -246,7 +290,12 @@ export class JobsServiceService {
       })
       .execute();
 
-    return result.affected === 1;
+    if (result.affected === 1) {
+      this.eventsGateway.broadcastJobStatusChanged();
+      this.eventsGateway.broadcastStatsUpdate();
+      return true;
+    }
+    return false;
   }
 
   JobCorn(currentJob: Job, nextRun: Date): Job {
@@ -316,17 +365,31 @@ export class JobsServiceService {
     return !job || job.isCanceled;
   }
 
-  async getAllJobs(): Promise<AllJobsDto> {
+  async getPendingQueueCounts(userId: string): Promise<AllJobsDto> {
     const high = await this.jobRepository.count({
-      where: { priorityLevel: JobPriorityLevel.HIGH },
+      where: {
+        userId,
+        status: JobStatus.PENDING,
+        priorityLevel: JobPriorityLevel.HIGH,
+      },
     });
     const medium = await this.jobRepository.count({
-      where: { priorityLevel: JobPriorityLevel.MEDIUM },
+      where: {
+        userId,
+        status: JobStatus.PENDING,
+        priorityLevel: JobPriorityLevel.MEDIUM,
+      },
     });
     const low = await this.jobRepository.count({
-      where: { priorityLevel: JobPriorityLevel.LOW },
+      where: {
+        userId,
+        status: JobStatus.PENDING,
+        priorityLevel: JobPriorityLevel.LOW,
+      },
     });
 
     return { high, medium, low };
   }
+
+
 }
